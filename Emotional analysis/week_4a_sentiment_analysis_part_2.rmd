@@ -1,0 +1,227 @@
+---
+title: "Sentiment_analysis_part_2"
+author: "jiho yeo"
+date: "3/19/2021"
+output: html_document
+editor_options:  
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load libraries
+
+```{r}
+library(tidytext)
+library(tidyverse)
+library(janeaustenr)
+library(stringr)
+```
+
+책별, 줄별, 챕터별 단어 추출
+```{r tidy_books}
+tidy_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%               #group으로 묶인 데이터 그룹 해제
+  unnest_tokens(word, text)
+
+tidy_books
+```
+
+## Most common positive and negative words {#most-positive-negative}
+
+One advantage of having the data frame with both sentiment and word is that we can analyze word counts that contribute to each sentiment. By implementing `count()` here with arguments of both `word` and `sentiment`, we find out how much each word contributed to each sentiment.
+데이터 프레임에 정서와 단어가 모두 포함된 한 가지 이점은 각 정서에 기여하는 단어 수를 분석할 수 있다는 것이다.
+여기서 단어와 정서를 동시에 주장하며 카운트()를 구현하면 각 단어가 각 정서에 얼마나 기여했는지 알 수 있다.
+
+
+
+각 단어를 보고 긍정인지 부정인지, 몇번쓰였는지 보여줌
+```{r wordcounts, dependson = "tidy_books"}
+bing_word_counts <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+                     #bing이라는 감성사전을 사용해서 join
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts
+```
+
+This can be shown visually, and we can pipe straight into ggplot2, if we like, because of the way we are consistently using tools built for handling tidy data frames.
+
+
+positive와 negative를 10개씩 추출하여 word별로 count가 몇개인지 시각화 
+```{r pipetoplot, dependson = "wordcounts", fig.width=6, fig.height=3, fig.cap="Words that contribute to positive and negative sentiment in Jane Austen's novels"}
+
+?top_n
+
+bing_word_counts %>%
+  group_by(sentiment) %>%    #sentiment별로(p/n)
+  top_n(10) %>%              #n이 10이라는 것(10개만 추출)
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%   #word를 n에 따라 정렬
+  ggplot(aes(n, word, fill = sentiment)) +
+             #x=n, y=word   word별로 count가 몇개인지 시각화 
+  geom_col(show.legend = FALSE) +        #geom_col: 막대그래프
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL)
+```
+
+Lets us spot an anomaly in the sentiment analysis; the word "miss" is coded as negative but it is used as a title for young, unmarried women in Jane Austen's works. If it were appropriate for our purposes, we could easily add "miss" to a custom stop-words list using `bind_rows()`. We could implement that with a strategy such as this.
+
+
+stop_words: 지우고자 하는 단어를 모아놓음
+그곳에 miss추가해서 새로운 걸 만듦
+```{r}
+stop_words
+
+custom_stop_words <- bind_rows(tibble(word = c("miss"),  
+                                      lexicon = c("custom")), 
+                               stop_words)
+
+custom_stop_words
+```
+
+
+### Wordclouds
+
+We've seen that this tidy text mining approach works well with ggplot2, but having our data in a tidy format is useful for other plots as well.
+
+For example, consider the wordcloud package, which uses base R graphics. Let's look at the most common words in Jane Austen's works as a whole again.
+
+
+wordcloud(….) : WordCloud 그리는 함수
+- scale : 빈도가 가장 큰 단어와 가장 빈도가 작은 단어 폰트 사이 크기, scale=c(5,0.2)
+- rot.per=0.1 : 90도 회전해서 보여줄 단어 비율
+- min.freq=3, max.words=100 : 빈도 3이상, 100미만 단어 표현
+- random.order=F : True(랜덤배치) / False(빈도수가 큰단어를 중앙에 배치)
+- random.color=T : True(색상랜덤) / False(빈도수순으로 색상표현)
+- colors=brewer.pal(11, "Paired") : 11은 사용할 색상개수, 두번째는 색상타입이름, 색상타입은 display.brewer.all() 참고
+- family : 폰트
+
+```{r firstwordcloud, dependson = "tidy_books", fig.height=7, fig.width=7, fig.cap="The most common words in Jane Austen's novels"}
+#install.packages("wordcloud")
+library(wordcloud)
+
+#anti_join을 사용하여 custom_stop_words 제거 후 wordcloud
+tidy_books %>%
+  anti_join(custom_stop_words) %>%  
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100,scale=c(2,0.3)))
+
+### 코드 분할
+?wordcloud
+
+tmp <- tidy_books %>%
+  anti_join(stop_words) %>%
+  count(word)
+
+wordcloud(tmp$word,tmp$n,max.words = 100,scale=c(0.5,0.8))
+```
+
+In other functions, such as `comparison.cloud()`, you may need to turn the data frame into a matrix with reshape2's `acast()`. Let's do the sentiment analysis to tag positive and negative words using an inner join, then find the most common positive and negative words. Until the step where we need to send the data to `comparison.cloud()`, this can all be done with joins, piping, and dplyr because our data is in tidy format.
+
+어떤 긍정적인 단어, 부정적인 단어가 쓰인 비율을 시각적으로 볼 수 있움
+```{r wordcloud, dependson = "tidy_books", fig.height=6, fig.width=6, fig.cap="Most common positive and negative words in Jane Austen's novels"}
+library(reshape2)
+
+tidy_books %>%
+  anti_join(custom_stop_words) %>% 
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray20", "gray80"),max.words = 100, scale=c(2,.2))
+
+### 코드 분할
+#단어에 따른 긍/부정 수
+tmp <- tidy_books %>%
+  anti_join(custom_stop_words) %>% 
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) 
+tmp
+
+#단어별 negative, positive 수를 table로 보여줌
+tmp2 <- tmp %>% 
+  acast(word ~ sentiment, value.var = "n", fill = 0)
+tmp2
+                 #acast = pivot_wider : 넓게 펴주는 것
+
+
+tmp2 %>% 
+  comparison.cloud(colors = c("gray20", "gray80"),max.words = 100)             #comparison.cloud: 색깔 다르게 표현
+```
+
+We can use tidy text analysis to ask questions such as what are the most negative chapters in each of Jane Austen's novels? 
+
+First, let's get the list of negative words from the Bing lexicon. 
+
+Second, let's make a data frame of how many words are in each chapter so we can normalize for the length of chapters. 
+
+Then, let's find the number of negative words in each chapter and divide by the total words in each chapter. For each book, which chapter has the highest proportion of negative words?
+
+```{r chapters, dependson = "tidy_books"}
+bingnegative <- get_sentiments("bing") %>% 
+  filter(sentiment == "negative")
+
+wordcounts <- tidy_books %>%
+  group_by(book, chapter) %>%
+  summarize(words = n())
+
+tidy_books %>%
+  semi_join(bingnegative) %>%
+  group_by(book, chapter) %>%
+  summarize(negativewords = n()) %>%
+  left_join(wordcounts, by = c("book", "chapter")) %>%
+  mutate(ratio = negativewords/words) %>%
+  filter(chapter != 0) %>%
+  top_n(n=1, wt=ratio) %>%
+  ungroup()
+
+### 코드 분할
+
+# bingnegative을 join 시킴 
+# `semi_join()` return all rows from x with a match in y.
+a1 <- tidy_books %>%
+  semi_join(bingnegative)
+
+a1
+
+# book, chapter 별로 그룹을 지어서 전체 negative word 숫자 카운트
+a2 <- a1 %>%
+  group_by(book, chapter) %>%
+  summarize(negativewords = n())
+
+a2
+
+# wordcount 데이터프레임을 join 시킴
+a3 <- a2 %>%
+  left_join(wordcounts, by = c("book", "chapter"))
+
+a3
+
+# ratio 컬럼 생성 후, Chapter 0 제거
+a4 <- a3  %>%
+  mutate(ratio = negativewords/words) %>%
+  filter(chapter != 0) 
+
+a4
+
+# 
+a5 <- a4 %>%
+  top_n(n=1, wt=ratio) %>%
+  ungroup()
+
+a5
+```
+
+## Summary
+
+Sentiment analysis provides a way to understand the attitudes and opinions expressed in texts. In this chapter, we explored how to approach sentiment analysis using tidy data principles; when text data is in a tidy data structure, sentiment analysis can be implemented as an inner join. We can use sentiment analysis to understand how a narrative arc changes throughout its course or what words with emotional and opinion content are important for a particular text. We will continue to develop our toolbox for applying sentiment analysis to different kinds of text in our case studies later in this book.

@@ -1,0 +1,189 @@
+---
+title: "week_9b_sentiment_Korean2"
+author: "jiho yeo"
+date: "4/30/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### KoNLP 설치 문제 해결
+
+1. 윈도우 32bit; 64bit 확인하기. 본인 운영체제에 맞는 java 설치 필요
+2. 환경변수가 제대로 설정 되었는지 확인하기
+3. R에서 환경변수 다시 한번 확인하기
+```{r}
+Sys.getenv(c("JAVA_HOME","PATH"))
+Sys.setenv(JAVA_HOME="C:\\Program Files\\Java\\jdk-15.0.2")
+```
+4. R에서 library가 설치되는 폴더 확인하기. Window 계정이 한글인 경우 library가 설치가 안되는 문제가 발생. 그럴 때는 아래의 링크를 참조하여 library가 설치되는 폴더 수정
+
+https://m.blog.naver.com/rickman2/221449799786
+
+```{r}
+.libPaths()
+```
+
+
+
+### 영화 리뷰 크롤링 
+
+#### 패키지 로드
+
+```{r}
+# install.packages("XML")
+library(XML)
+library(stringr)
+library(tidyverse)
+library(tidytext)
+
+Sys.setlocale("LC_ALL","Korean") # 언어 한글로
+```
+
+#### 영화 리뷰 가져오기
+
+```{r}
+all_reviews <- NULL
+url_base <- "https://movie.naver.com/movie/bi/mi/pointWriteFormList.nhn?code=187310&type=after&onlyActualPointYn=N&order=newest&page="
+```
+
+```{r}
+for (i in 1:240) { 
+  newr <- NULL
+  url <- paste(url_base, i, sep='')
+  txt <- readLines(url, encoding="UTF-8")
+  
+  # 영화 리뷰 부분만 가져오기
+  reviews <- txt[which(str_detect(txt, "id=\"_filtered_ment"))+4] 
+  # 특수문자 제거
+  reviews <- gsub("<.+?>|\t","", reviews) 
+  
+  newr <- cbind(reviews)
+  all_reviews <- rbind(all_reviews, newr)
+}
+```
+
+#### 텍스트 데이터 전처리
+
+```{r}
+review_dat <- tibble(reply = all_reviews,
+                     n_char = nchar(all_reviews)) %>%
+  filter(n_char>1) %>%
+  mutate(id=row_number()) %>% 
+  select(id,reply)
+```
+
+---
+
+### 토큰화
+
+```{r}
+word_comment <- review_dat %>%
+  unnest_tokens(input = reply,
+                output = word,
+                token = "words",
+                drop = FALSE)
+
+# word_comment %>%
+#   select(word, reply)
+```
+
+---
+
+### 감성점수 부여
+
+#### 군산대 감성사전 다운로드
+
+- https://github.com/park1200656/KnuSentiLex
+
+```{r}
+dic <- read_csv("data/knu_sentiment_lexicon.csv")
+```
+
+#### 감성점수 계산
+
+```{r}
+word_comment <- word_comment %>%
+  left_join(dic, by = "word") %>%
+  mutate(polarity = ifelse(is.na(polarity), 0, polarity))
+```
+
+---
+
+### 자주 사용된 감정단어 살펴보기
+
+```{r}
+# 1. 감정 분류하기
+word_comment <- word_comment %>%
+  mutate(sentiment = ifelse(polarity >= 1, "pos",
+                            ifelse(polarity <= -1, "neg", "neu")))
+word_comment %>%
+  count(sentiment)
+
+# 2. 막대 그래프 만들기
+top10_sentiment <- word_comment %>%
+  filter(sentiment != "neu") %>%
+  count(sentiment, word) %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10)
+
+top10_sentiment
+
+# 막대 그래프 만들기
+ggplot(top10_sentiment, aes(x = reorder(word, n),
+                            y = n,
+                            fill = sentiment)) +
+  geom_col() +
+  coord_flip() +
+  geom_text(aes(label = n), hjust = -0.3) +
+  facet_wrap(~ sentiment, scales = "free") +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+  labs(x = NULL) 
+```
+
+- 영화 '기생충'과 비교
+
+```{r}
+knitr::include_graphics("images/parasite.png")
+```
+
+### 작성자별 감성점수 구하기
+
+```{r}
+score_comment <- word_comment %>% 
+  group_by(id, reply) %>% 
+  summarise(score = sum(polarity)) %>% ungroup()
+
+score_comment %>% select(score, reply)
+```
+
+```{r}
+score_comment %>% count(score)
+```
+
+- 감정 분류 시각화
+
+```{r}
+# 감정 분류하기
+score_comment <- score_comment %>%
+  mutate(sentiment = ifelse(score >= 1, "pos",
+                            ifelse(score <= -1, "neg", "neu")))
+# 감정 빈도와 비율 구하기
+frequency_score <- score_comment %>%
+  count(sentiment) %>%
+  mutate(ratio = n/sum(n)*100)
+
+frequency_score
+
+# 막대 그래프 만들기
+ggplot(frequency_score, aes(x = sentiment, y = n, fill = sentiment)) +
+  geom_col() +
+  geom_text(aes(label = n), vjust = -0.3) +
+  scale_x_discrete(limits = c("pos", "neu", "neg"))
+```
+
+

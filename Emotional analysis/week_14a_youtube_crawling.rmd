@@ -1,0 +1,228 @@
+---
+title: "youtube_crawling"
+author: "Jiho Yeo"
+date: "6/1/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+Sys.setlocale("LC_ALL","Korean") # 언어 한글로
+```
+
+## RSelenium 설치
+
+오늘은 RSelenium 패키지를 활용해서 유투브에서 댓글과 제목을 크롤링 하는 실습을 해봅시다.
+사전 세팅 작업이 조금 복잡한데, https://r-pyomega.tistory.com/7 여기 링크에 잘 나와있습니다.
+같이 보면서 Selenium Server를 구동해봅시다
+
+## Load dependencies
+
+java -Dwebdriver.gecko.driver="geckodriver.exe" -jar selenium-server-standalone-4.0.0-alpha-1.jar -port 4445
+
+```{r}
+library(httr)
+library(rvest)
+#install.packages("RSelenium")
+library(RSelenium)
+```
+
+## Selenium 연결
+
+외부 프로그램을 활용하여 웹페이지 컨트롤이 가능
+
+```{r}
+remD <- remoteDriver(port=4445L, #포트번호 입력
+                     browserName="chrome")
+
+remD$open() # 크롬이 열리게 됨
+```
+
+
+
+## Navigate 함수를 활용 웹페이지 접속
+
+```{r}
+# 동영상 링크로 유튜브 접속
+remD$navigate("https://www.youtube.com/watch?v=imqhFBGslqw&t=1272s")
+
+# 특정 검색어로 검색
+search_name <- "한남대학교"
+remD$navigate(paste0("http://www.youtube.com/results?search_query=",search_name))
+```
+
+## 정보 가져오기 1 - 영상 제목 가져오기
+
+크롬창에서 f12를 눌러 Source page에 접근  
+
+
+```{r}
+# 검색어 입력
+search_name <- "LH공사"
+remD$navigate(paste0("http://www.youtube.com/results?search_query=",search_name))
+
+# Scroll down으로 더 많은 영상 출력
+remD$executeScript("window.scrollTo(6000,7000)")
+
+# html Source 가져오기
+html <- remD$getPageSource()[[1]]
+html <- read_html(html)
+
+# 제목만 추출
+youtube_title <- html %>% 
+  html_nodes("#video-title") %>% 
+  html_text()
+
+youtube_title
+
+# 정규표현식을 통한 데이터 정제
+youtube_title <- gsub("\n","",youtube_title)
+```
+
+## 정보 가져오기 2 - 댓글 가져오기
+
+```{r}
+# 영상 접속 
+remD$open() # 크롬이 열리게 됨
+remD$navigate("https://www.youtube.com/watch?v=imqhFBGslqw&t=1272s")
+
+# Scroll down으로 더 많은 댓글 출력
+for (i in 1:10){
+  remD$executeScript("window.scrollTo(50000,70000)")
+  Sys.sleep(1)
+}
+
+# 페이지 소스 가져오기
+html <- remD$getPageSource()[[1]]
+html <- read_html(html)
+
+youtube_comments <- html %>% 
+  html_nodes("#content-text") %>% 
+  html_text()
+
+# 정규표현식을 통한 데이터 정제
+youtube_comments <- gsub("\n","",youtube_comments)
+```
+
+### 단어 시각화
+
+```{r}
+library(KoNLP)
+
+original_comment <- tibble(id=1:length(youtube_comments),text=youtube_comments)
+
+word_comment <- original_comment%>%
+  unnest_tokens(input = text,
+                output = word,
+                token = SimplePos09,
+                drop = FALSE)
+
+
+write_rds(word_comment,"data/word_comment.rds")
+
+```
+
+- 명사 가져오기
+
+```{r}
+n_done <- word_comment %>%
+  filter(str_detect(word, "/n")) %>% # 명사만 추출
+  mutate(pos_done  = str_remove(word, "/.*$")) %>% # 형태소 정보 제거
+  filter(nchar(pos_done) > 1)%>% 
+  ungroup()
+```
+
+- 동사/형용사 가져오기
+
+```{r}
+p_done <- word_comment %>%
+  filter(str_detect(word, "/p")) %>% 
+  mutate(pos_done =str_replace_all(word,"/.*$", "다")) %>%
+  filter(nchar(pos_done) > 1) %>% 
+  ungroup()
+```
+
+- 합치기
+
+```{r}
+pos_done <- bind_rows(n_done, p_done) %>% 
+  arrange(pos_done) %>% 
+  select(id, pos_done) 
+
+pos_done
+```
+
+#### 단어출현빈도
+
+```{r}
+# 전체 명사/동사/형용사
+pos_done %>%
+  count(pos_done, sort = TRUE) %>%
+  filter(n >10) %>%
+  mutate(pos_done = reorder(pos_done, n)) %>%
+  ggplot(aes(pos_done, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+# 명사만
+n_done %>% 
+  count(pos_done, sort = TRUE) %>%
+  filter(n >8) %>%
+  mutate(pos_done = reorder(pos_done, n)) %>%
+  ggplot(aes(pos_done, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+# 동사/형용사만
+p_done %>%
+  count(pos_done, sort = TRUE) %>%
+  filter(n >8) %>%
+  mutate(pos_done = reorder(pos_done, n)) %>%
+  ggplot(aes(pos_done, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+#### Wordcloud
+
+```{r}
+library(wordcloud2)
+
+n_done_count <- n_done %>% count(pos_done)
+
+wordcloud2(data=n_done_count,fontFamily = '나눔바른고딕', 
+           size=0.5,
+           minSize=5)
+```
+
+- 보정
+
+```{r}
+n_done2 <- n_done %>% 
+  mutate(pos_done=gsub("^린튼$","린튼가",pos_done)) %>%
+  mutate(pos_done=gsub("한국에$","한국",pos_done)) %>% 
+  mutate(pos_done=gsub("한국을$","한국",pos_done))%>% 
+  mutate(pos_done=gsub("한국에서","한국",pos_done))%>% 
+  mutate(pos_done=gsub("감사함$","감사",pos_done))%>% 
+  mutate(pos_done=gsub("헌신하시$","헌신",pos_done))%>% 
+  mutate(pos_done=gsub("^존경.*","존경",pos_done))
+
+n_done_count <- n_done2 %>% count(pos_done)
+
+wordcloud2(data=n_done_count,fontFamily = '나눔바른고딕', 
+           size=0.5,
+           minSize=4)
+```
+
+
+## 실습
+
+원하는 동영상 링크를 하나 정해서 웹크롤링을 해봅시다.
+댓글을 Tokenization 하고, 정규표현식을 통해 텍스트데이터 전처리를 해봅시다. 
+마지막으로 Wordcloud를 만들고, Word Frequency를 시각화 해 보세요
+
+

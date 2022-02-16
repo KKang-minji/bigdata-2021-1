@@ -1,0 +1,246 @@
+---
+title: "sentiment_analysis_Korean"
+author: "Jiho Yeo"
+date: '2021 4 28 '
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 정규표현식에 대한 부가설명
+
+^ : 이걸로 시작함
+$ : 이걸로 끝남
+. : 임의의 글자 하나
+? : 앞에 있는 문자가 없거나 하나
++ : 앞에 있는 문자가 하나 이상
+* : 앞에 있는 문자가 없거나 하나 이상
+
+`grep` (찾고자하는 패턴, 대상벡터)
+
+```{r}
+data<-c("apple","banana","banano")
+grep("banana", data)
+```
+
+"banana" 라는 단어가 들어가 있기만 하면 찾음
+
+```{r}
+data<-c("apple","banana","banano", "a banana")
+grep("banana", data)
+```
+
+^을 맨 앞에 같이 사용하면 그 뒤의 글자로 시작하는 데이터만 찾음
+
+```{r}
+grep("^banana", data)
+```
+
+$을 맨 뒤에 같이 사용하면 그 앞의 글자로 끝나는 데이터만 찾음
+
+```{r}
+data<-c("apple","banana","banano", "a banana", "a banana a")
+grep("banana", data)
+
+grep("banana$", data)
+```
+
+완전히 일치하는 단어만 찾기
+
+```{r}
+data<-c("apple","banana","banano", "a banana", "a banana a")
+grep("banana", data)
+
+grep("^banana$", data)
+```
+
+. 은 정규표현식에서 무엇이든 한 개의 글자를 의미
+
+```{r}
+data <- c("apple", "banana", "pear")
+grep(".a.", data)
+```
+
+[]는 대괄호 안에 있는 글자 하나하나가 문자클래스로 가능한 경우입니다. 예를 들어 [02468]이라고 하면 0, 2, 4, 6, 8 중 하나의 글자면 같은 패턴으로 이해합니다.
+
+```{r}
+x <- c("123", "1357","999990","1133")
+grep("[02468]", x)
+```
+
+문자 클래스 내에서는 ^가 지정한 글자들을 제외하고라는 뜻입니다.
+
+```{r}
+x <- c("123", "1357","999990","0200","02468")
+grep("[^02468]", x)
+```
+
+?는 글자 뒤에 붙어서 그 글자가 한개 있거나 없는 경우 모두를 표현할 때 사용합니다.
+
+```{r}
+x <- c("apple", "banana", "pear", "aple")
+grep("app?", x)
+```
+
++는 글자 뒤에 붙어서 그 글자가 한개 이상 연속하는 모두를 표현할 때 사용합니다.
+
+```{r}
+x <- c("apple", "banana", "pear", "aple")
+grep("p+", x)
+```
+
+```{r}
+grep("ap+", x)
+```
+
+*는 글자 뒤에 붙어서 그 글자가 없는 경우부터 여러 개 연속하는 모두를 표현할 때 사용합니다.
+
+```{r}
+x <- c("apple", "banana", "pear", "aple", "abble","appppppppple")
+grep("app*", x)
+
+str_extract(string=x, pattern="app*")
+str_extract(string=x, pattern="app+")
+```
+
+## 뉴스기사 댓글 분석
+
+```{r}
+# install.packages("N2H4").
+library(N2H4)
+library(tidyverse)
+library(KoNLP)
+```
+
+```{r}
+tar <- "https://news.naver.com/main/read.nhn?mode=LSD&mid=shm&sid1=101&oid=437&aid=0000264891"
+
+news.comment<-getAllComment(tar) %>% 
+  select(userName, contents) 
+```
+
+#### 형태소 단위로 tokenization
+
+- 형태소 단위로 Tokenization
+
+```{r}
+news.token <- news.comment %>%
+  unnest_tokens(output=pos, input=contents, token=SimplePos09) %>% 
+  group_by(userName) %>% # 사용자 별로 그룹 지어서
+  mutate(pos_order = 1:n()) # pos 결과물의 순서 보장을 위해 순서 값을 추가
+```
+
+
+
+- 명사만 가져오기 
+
+```{r}
+n_done <- news.token %>%
+  filter(str_detect(pos, "/n")) %>% # 명사만 추출
+  mutate(pos_done  = str_remove(pos, "/.*$")) %>% # 형태소 정보 제거
+  filter(nchar(pos_done) > 1)%>% 
+  ungroup()
+```
+
+- 동사/형용사 가져오기
+
+```{r}
+p_done <- news.token %>%
+  filter(str_detect(pos, "/p")) %>% 
+  mutate(pos_done =str_replace_all(pos,"/.*$", "다")) %>%
+  filter(nchar(pos_done) > 1) %>% 
+  ungroup()
+```
+
+- 합치기
+
+```{r}
+pos_done <- bind_rows(n_done, p_done) %>% 
+  arrange(pos_order) %>% 
+  select(userName, pos_done) 
+
+pos_done
+```
+
+#### 단어출현빈도
+
+```{r}
+# 전체 명사/동사/형용사
+pos_done %>%
+  count(pos_done, sort = TRUE) %>%
+  filter(n >30) %>%
+  mutate(pos_done = reorder(pos_done, n)) %>%
+  ggplot(aes(pos_done, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+# 명사만
+n_done %>% 
+  count(pos_done, sort = TRUE) %>%
+  filter(n >20) %>%
+  mutate(pos_done = reorder(pos_done, n)) %>%
+  ggplot(aes(pos_done, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+# 동사/형용사만
+p_done %>%
+  count(pos_done, sort = TRUE) %>%
+  filter(n >15) %>%
+  mutate(pos_done = reorder(pos_done, n)) %>%
+  ggplot(aes(pos_done, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+#### 감성어사전 설치
+
+KnuSentiLex는 군산대 Data Intelligence Lab에서 기존 사전들을 참조, 활용하여 18년 구축한 감성 사전. 구조가 단순하고 이모티콘 등을 추가한 점이 장점인 반면, 형태소 형식이 아니라는 한계가 있음
+
+https://github.com/park1200656/KnuSentiLex
+
+```{r}
+# library(remotes)
+# remotes::install_github("mrchypark/KnuSentiLexR")
+library(KnuSentiLexR)
+```
+
+#### 데이터 tokenization (문장단위)
+
+```{r}
+senti_tar <- news.comment %>%
+  unnest_tokens(sent, contents, token = "sentences") %>%
+  filter(nchar(sent) < 20)  %>% 
+  group_by(userName) %>% # 사용자 별로 그룹 지어서
+  mutate(sent_order = 1:n())
+
+senti_tar %>% View()
+```
+
+#### 감성분석 점수 계산
+
+senti_score() 함수는 문장을 unigram 부터 3-gram 까지 작성한 후, 감성 사전에 점수를 합산하여 문장 점수를 계산
+
+senti_magnitude() 함수는 몇개의 ngram이 점수화되었는지를 계산
+dic 객체가 word, polarity 컬럼을 가지고 있는 감성 사전임
+
+```{r}
+senti.score <- senti_tar %>%
+  mutate(score = senti_score(sent),
+         magni = senti_magnitude(sent)) %>%
+  filter(score != 0)
+
+boxplot(senti.score$score)
+```
+
+## 자료 출처
+
+- 텍스트분석을 위한 https://mrchypark.github.io/textR/print.html
+- R로하는 텍스트데이터 전처리 https://mrchypark.github.io/RKoText101/#36

@@ -1,0 +1,137 @@
+---
+title: "Final_project"
+author: "Jiho Yeo"
+date: '2021 5 14 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 과제 소개
+
+영어로 된 텍스트(미국 대통령 연설문)과 한글로 된 텍스트(네이버 영화 리뷰) 데이터를 기반으로 기초적인 텍스트 마이닝을 수행하고, 감성분석까지 수행하는 것이 프로젝트의 최종 목표입니다. 
+
+미국 대통령 연설문 데이터는 제공이 되고, 네이버 영화 리뷰는 수업자료 week_9a의 RMarkdown 파일을 참고하면 크롤링이 가능합니다. 
+
+단순 분석 코드만 채우지 않고, 코드의 결과에 대한 설명도 함께 기술을 해야 합니다. 
+
+## 1. 미국 대통령 연설 텍스트 마이닝 및 감성분석 (50점)
+
+### Data set
+
+미국 대통령 연설문 데이터 및 Tokenization 방법은 제공됨
+
+```{r}
+# load in the libraries we'll need
+library(tidyverse)
+library(tidytext)
+library(stringr)
+```
+
+
+```{r}
+# get a list of the files in the input directory
+files <- list.files("data/")
+
+dat <- lapply(1:length(files),function(k){
+  fileName <- paste0("data/", files[k], sep = "")
+  fileText<-read_tsv(fileName,col_names = "text")
+  fileText$president_name <- gsub("_.+",replacement = "",files[k])
+  fileText$year <- str_extract(string=files[k],pattern ="[0-9]+")
+  tokens <- fileText %>% unnest_tokens(word, text)
+  return(tokens)
+})
+
+dat <- dat %>% bind_rows()
+```
+
+lapply 함수는 여러번의 동작을 반복수행해서 데이터로 저장하고 싶을 때 많이 쓰임  
+위의 코드는 각 대통령의 연설문을 tokenization을 해서 그 결과를 `list` 형태의 데이터로 저장하는 코드임
+
+```{r}
+# lapply 예제
+tmp <- lapply(1:10, function(x) x*2)
+```
+
+
+### 1-1. Word Frequency 시각화 및 해석 (10점)
+
+```{r}
+
+```
+
+### 1.2. tf-idf score 시각화 및 해석 (10점)
+
+```{r}
+
+```
+
+### 1.3 Wordcloud를 통한 많이 쓰이는 단어 시각화 (10점)
+
+`wordcloud` 혹은 `wordcloud2` library를 사용하여 시각화,
+어떤 Library를 사용하는지는 점수에 반영되지 않습니다. 
+
+```{r}
+
+```
+
+### 1.4 Sentiment Analysis (20점)
+
+다양한 감성분석을 수행해 보시오. 
+어떤 부정적인 단어가 많이 나왔는지, 어떤 긍정적인 단어가 많이 나왔는지를 분석하고, 
+대통령별로 비교해 보시오.  
+
+또한, 대통령별이 아닌 연도별로 Sentiment score가 어떻게 변화하였는지도 시각화 해 보시오.
+
+```{r}
+
+```
+
+
+## 2. 네이버 영화에서 원하는 영화 4개를 선정하여 텍스트 마이닝 및 감성분석 수행 (50점)
+
+### Data set
+
+```{r}
+
+```
+
+
+### 1.1. 텍스트 데이터 Tokenization (형태소 단위 혹은 words단위로 자유롭게) (10점)
+
+어떤 단위로 Tokenization을 하는지도 점수에 반영되지 않습니다. 
+
+```{r}
+
+```
+
+
+### 1.2. Wordcloud를 통한 많이 쓰이는 단어 시각화 (10점)
+
+```{r}
+
+```
+
+
+### 1.3. 정규표현식을 활용한 텍스트 데이터 수정 및 변형 (자주 등장하는 단어 위주로) (10점)
+
+```{r}
+
+```
+
+
+### 1.4. Word Frequency 시각화 및 해석 (10점)
+
+```{r}
+
+```
+
+### 1.5. tf-idf score 시각화 (10점)
+
+```{r}
+
+```
+
+

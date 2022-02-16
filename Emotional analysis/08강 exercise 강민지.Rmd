@@ -1,0 +1,139 @@
+---
+title: "week_8 exercise"
+author: "minji"
+date: '2021 5 31 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(KoNLP)
+library(tidytext) 
+library(tidyverse)
+```
+
+
+```{r}
+guess_encoding("data/text_exam_ko2.csv")
+
+text_df1 <- read_csv("data/text_exam_ko2.csv", 
+                    locale=locale(encoding='EUC-KR'))
+```
+```{r}
+text_tb1 <- text_df1 %>%
+  as_tibble() %>%
+  unnest_tokens(output=morp, input=본문, token=SimplePos09) %>% # 형태소로 분리
+  filter(str_detect(morp, "/n")) %>% # 명사만 추출
+  mutate(word = str_remove(morp, "/.*$")) %>% # 형태소 정보 제거
+  filter(str_length(word)>=2)
+
+print(text_tb1, n=30)  
+```
+
+
+## Term Frequency, tf-idf 계산
+
+```{r}
+text_tb1 <- text_tb1 %>%
+  count(번호, word, sort = TRUE) %>%
+  bind_tf_idf(번호, word, n)
+
+text_tb1
+```
+
+## 불용어(stopwords) 삭제
+
+```{r}
+# 4.불용어 삭제
+st_word1 <- tibble(word=c("'잘", "forum)'에서","개막한",
+                        "거야'","그랜드&비스타워커힐서울에서","도전할", "공유할","이번성공","측정할","측정하","활용해")) # 불용어 추가
+
+text_tb1 <- text_tb1 %>%
+  anti_join(st_word, by=c("word"="word")) %>%   # 불용어 추가 삭제
+  filter(!grepl(pattern="\\d+", word))          # //d+ = 숫자의 정규표현식
+
+print(text_tb1, n=30)
+```
+
+### 단어빈도 시각화 
+```{r}
+text_tb1 %>%
+  count(word, sort = TRUE) %>%
+  filter(n >3) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+### tf-idf 시각화
+
+```{r}
+text_tb1 %>%
+  arrange(desc(tf_idf))%>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  coord_flip()
+```
+
+
+```{r}
+text_tb1 %>%
+  arrange(desc(tf_idf))%>%
+  mutate(word = reorder(word, tf_idf)) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  coord_flip()
+```
+
+
+### 단순 Wordcloud
+
+```{r}
+library(wordcloud)
+
+text_tb1 %>%
+  count(word, sort = TRUE) %>%
+  with(wordcloud(words=word, 
+                 freq=n, 
+                 max.words=100))
+```
+
+### 색깔 Customize
+
+```{r}
+palete1 <-brewer.pal(6,"Dark2")
+windowsFonts(malgun=windowsFont("맑은 고딕"))
+
+text_tb1 %>%
+  count(word, sort = TRUE) %>%
+  with(wordcloud(words=word,
+                 freq=n,
+                 scale=c(4,0.5), 
+                 min.freq=3, 
+                 max.words=100,
+                 random.order=FALSE, 
+                 colors=palete, 
+                 family="malgun"))
+```
+
+
+
+
+
+
+
+
+
+
+
+

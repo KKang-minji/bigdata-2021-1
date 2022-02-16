@@ -1,0 +1,97 @@
+---
+title: "week_14b_web_crawling"
+author: "Jiho Yeo"
+date: "6/3/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 참고자료
+
+https://kuduz.tistory.com/1041
+
+
+## Load dependencies
+
+```{r}
+Sys.setlocale("LC_ALL","Korean") # 언어 한글로
+```
+
+```{r}
+library(httr)
+library(rvest)
+library(RSelenium)
+library(tidyverse)
+```
+
+## Selenium 연결
+
+외부 프로그램을 활용하여 웹페이지 컨트롤이 가능
+
+```{r}
+remD <- remoteDriver(port=4445L, #포트번호 입력
+                     browserName="chrome")
+
+remD$open() # 크롬이 열리게 됨
+```
+
+## 인스타그램에서 해시태그로 검색
+
+```{r}
+# 해시태그 입력
+search_name <- "한남대학교"
+remD$navigate(paste0("https://www.instagram.com/explore/tags/",search_name))
+```
+
+## 게시글들의 링크 가져오기
+
+```{r}
+# html Source 가져오기
+html <- remD$getPageSource()[[1]]
+html <- read_html(html)
+
+# 인스타그램 게시글 링크 가져오기
+links <- html %>% 
+  html_nodes("#react-root") %>%
+  html_nodes("a") %>%
+  html_attr("href")
+
+# 필요없는 링크 제거
+grep("/p/",links)
+links <- links[grep("/p/",links)]
+
+# 실제 접속 링크 생성
+links <- paste0("https://www.instagram.com",links)
+```
+
+## 각 게시글에 접속하여 텍스트 크롤링
+
+```{r}
+text_instagram <- lapply(1:length(links), function(k){
+  remD$navigate(links[k])
+  html <- remD$getPageSource()[[1]]
+  html <- read_html(html)
+  
+  texts <- html %>%
+    html_nodes(".C4VMK") %>%
+    html_nodes("span") %>% 
+    html_text()
+  
+  id_index <-seq(1,length(texts),2)
+  text_index <-seq(2,length(texts),2)
+  
+  text_df <- tibble(text_num=k,
+                    id=texts[id_index], 
+                    text_index=texts[text_index])
+  
+  return(text_df)
+})
+
+text_instagram <- text_instagram %>% bind_rows()
+```
+

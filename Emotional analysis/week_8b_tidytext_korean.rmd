@@ -1,0 +1,166 @@
+---
+title: "tidytext_analysis (Korean)"
+author: "Jiho Yeo"
+date: '2021 4 22 '
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 텍스트분석 Library load 
+
+```{r}
+library(KoNLP)
+library(tidytext) 
+library(tidyverse)
+```
+
+## 데이터 가져오기 (민원데이터)
+
+```{r}
+guess_encoding("data/text_exam_ko1.csv")
+
+text_df <- read_csv("data/text_exam_ko1.csv", 
+                    locale=locale(encoding='EUC-KR'))
+```
+
+## Tokenization 
+
+- 한글의 경우 영어와 다르게 형태소로 분리를 해야함 
+- 형태소를 추출 후, 형태소에서 단어로 형태를 변환
+- 한글 형태소 참고자료: https://brunch.co.kr/@mapthecity/9
+- https://cceeddcc.tistory.com/110
+
+```{r}
+text_tb <- text_df %>%
+  as_tibble() %>%
+  unnest_tokens(output=morp, input=text, token=SimplePos09) %>% # 형태소로 분리
+  filter(str_detect(morp, "/n")) %>% # 명사만 추출
+  mutate(word = str_remove(morp, "/.*$")) %>% # 형태소 정보 제거
+  filter(str_length(word)>=2)
+
+print(text_tb, n=30)  
+```
+
+## 불용어(stopwords) 삭제
+
+```{r}
+# 4.불용어 삭제
+st_word <- tibble(word=c("저조하다", "학교에대한",
+                         "개설해서")) # 불용어 추가
+
+text_tb <- text_tb %>%
+  anti_join(st_word, by=c("word"="word")) %>%   # 불용어 추가 삭제
+  filter(!grepl(pattern="\\d+", word))          # //d+ = 숫자의 정규표현식
+
+print(text_tb, n=30)
+```
+
+## Term Frequency, tf-idf 계산
+
+```{r}
+text_tb <- text_tb %>%
+  count(no, word, sort = TRUE) %>%
+  bind_tf_idf(no, word, n)
+
+text_tb
+```
+
+## Term-Document matrix로 변환
+
+- 추후 토픽모델링 등에 사용
+
+```{r}
+tdm <- text_tb %>%
+  cast_tdm(term=word, document=no, value=n)
+
+tfidf_tdm <- text_tb %>%
+  cast_tdm(document=no, term=word, value=tf_idf)
+```
+
+## Document-term matrix로 변환
+
+- 추후 토픽모델링 등에 사용
+
+```{r}
+dtm <- text_tb %>%
+  cast_dtm(document=no, term=word, value=n)
+
+tfidf_dtm <- text_tb %>%
+  cast_dtm(document=no, term=word, value=tf_idf)
+```
+
+## wordcloud와 단어빈도 분석 
+
+### 단어빈도 시각화 
+
+```{r}
+text_tb %>%
+  count(word, sort = TRUE) %>%
+  filter(n >3) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+### tf-idf 시각화
+
+```{r}
+text_tb %>%
+  arrange(desc(tf_idf))%>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  coord_flip()
+```
+
+```{r}
+text_tb %>%
+  arrange(desc(tf_idf))%>%
+  mutate(word = reorder(word, tf_idf)) %>%
+  top_n(10) %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  coord_flip()
+```
+
+
+### 단순 Wordcloud
+
+```{r}
+library(wordcloud)
+
+text_tb %>%
+  count(word, sort = TRUE) %>%
+  with(wordcloud(words=word, 
+                 freq=n, 
+                 max.words=100))
+```
+
+### 색깔 Customize
+
+```{r}
+palete<-brewer.pal(6,"Dark2")
+windowsFonts(malgun=windowsFont("맑은 고딕"))
+
+text_tb %>%
+  count(word, sort = TRUE) %>%
+  with(wordcloud(words=word,
+                 freq=n,
+                 scale=c(4,0.5), 
+                 min.freq=3, 
+                 max.words=100,
+                 random.order=FALSE, 
+                 colors=palete, 
+                 family="malgun"))
+```
+

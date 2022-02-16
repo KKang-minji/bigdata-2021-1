@@ -1,0 +1,331 @@
+---
+title: "Sentiment_analysis_part_1"
+author: "jiho yeo"
+date: "3/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Sentiment analysis with tidy data {#sentiment}
+
+In the previous chapter, we explored in depth what we mean by the tidy text format and showed how this format can be used to approach questions about word frequency.
+
+This allowed us to analyze which words are used most frequently in documents and to compare documents, but now let's investigate a different topic. 
+
+Let's address the topic of opinion mining or sentiment analysis. When human readers approach a text, we use our understanding of the emotional intent of words to infer whether a section of text is positive or negative.
+
+#opinion mining(의견분석)
+#이 단어가 긍정적인 뜻을 담고있는지 부정적인 뜻을 담고있는지 알아보는 시간
+
+
+One way to analyze the sentiment of a text is to consider the text as a combination of its individual words and the sentiment content of the whole text as the sum of the sentiment content of the individual words. 
+
+#text를 combination of its individual words하는 것
+#모든 text를 단어단어 쪼개 단어들의 집합을 만드는 것
+
+
+This isn't the only way to approach sentiment analysis, but it is an often-used approach, *and* an approach that naturally takes advantage of the tidy tool ecosystem.
+
+## The `sentiments` datasets
+
+As discussed above, there are a variety of methods and dictionaries that exist for evaluating the opinion or emotion in text. The tidytext package provides access to several sentiment lexicons. Three general-purpose lexicons are
+
+#dictionaries 가 중요
+#감성 사전을 어떤 것을 사용하는 지가 중요하다
+#우리는 밑에 있는 세가지를 사용 할 것
+
+
+* `AFINN` from [Finn Årup Nielsen](http://www2.imm.dtu.dk/pubdb/views/publication_details.php?id=6010),
+* `bing` from [Bing Liu and collaborators](https://www.cs.uic.edu/~liub/FBS/sentiment-analysis.html), and
+* `nrc` from [Saif Mohammad and Peter Turney](http://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm).
+
+All three of these lexicons are based on unigrams, i.e., single words. 
+
+These lexicons contain many English words and the words are assigned scores for positive/negative sentiment, and also possibly emotions like joy, anger, sadness, and so forth. 
+#어떤 감성사전은 긍정인지 부정인지
+#어떤 감정사전은 즐거움, 화남, 슬픔 등을 나눔
+
+
+The `nrc` lexicon categorizes words in a binary fashion ("yes"/"no") into categories of positive, negative, anger, anticipation, disgust, fear, joy, sadness, surprise, and trust. 
+#nrc 어휘는 긍정, 부정, 분노, 기대, 혐오, 두려움, 기쁨, 슬픔, 놀라움, 신뢰의 범주로 단어를 이진법으로 분류한다.
+
+The `bing` lexicon categorizes words in a binary fashion into positive and negative categories. 
+#'bing' 사전은 이진법으로 된 단어를 긍정과 부정으로 분류한다.
+
+The `AFINN` lexicon assigns words with a score that runs between -5 and 5, with negative scores indicating negative sentiment and positive scores indicating positive sentiment. 
+#AFINN 사전은 -5에서 5 사이의 점수를 가진 단어를 할당하며 음수는 부정적인 감정을 나타내고 양수는 긍정적인 감정을 나타낸다.
+
+The function `get_sentiments()` allows us to get specific sentiment lexicons with the appropriate measures for each one.
+#get_sentiments() 기능을 사용하면 각 기능에 대한 적절한 측정값이 포함된 특정 정서 어휘를 얻을 수 있다.
+
+
+afinn: 단어마다 점수부여
+```{r eval=FALSE}
+#install.packages("textdata")
+
+library(tidytext)
+
+#감성사전 불러오기
+get_sentiments("afinn")
+```
+
+```{r echo = FALSE}
+
+library(tidytext)
+#데이터 불러오기
+load("data/afinn.rda")
+afinn
+```
+bing: 긍정/부정
+```{r}
+get_sentiments("bing")
+```
+nrc: 디테일한 감정
+```{r eval=FALSE}
+get_sentiments("nrc")
+```
+
+```{r echo=FALSE}
+load("data/nrc.rda")
+nrc
+```
+
+## Sentiment analysis with inner join
+
+With data in a tidy format, sentiment analysis can be done as an inner join. 
+
+What are the most common joy words in *Emma*? First, we need to take the text of the novels and convert the text to the tidy format using `unnest_tokens()`, just as we did in Section \@ref(tidyausten). 
+
+Let's also set up some other columns to keep track of which line and chapter of the book each word comes from; we use `group_by` and `mutate` to construct those columns.
+
+```{r tidy_books}
+library(janeaustenr)
+library(dplyr)
+library(stringr)
+
+tidy_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+
+tidy_books
+
+
+#linenumber:책 줄 수
+```
+
+
+The text is in a tidy format with one word per row.
+We are ready to do the sentiment analysis. 
+
+First, let's use the NRC lexicon and `filter()` for the joy words. 
+
+Next, let's `filter()` the data frame with the text from the books for the words from *Emma* and then use `inner_join()` to perform the sentiment analysis. 
+
+What are the most common joy words in *Emma*? Let's use `count()` from dplyr.
+#*Emma*에서 dplyr의 count()를 사용해서 가장 일반적인 기쁨 단어는 무엇인지 알아보자.....ㅅㅂ
+
+```{r eval=FALSE}
+nrc_joy <- get_sentiments("nrc") %>% 
+  filter(sentiment == "joy")             #689개 단어 추출
+
+nrc_joy
+
+tidy_books %>%
+  filter(book == "Emma") %>%             #책의 이름이 "Emma"
+  inner_join(nrc_joy, by="word") %>%
+  #inner_join: joy라는 단어 없는 것은 빼고 join 
+  count(word, sort = TRUE)               #감정 count함
+                                         #303개 단어 남음
+```
+We see mostly positive, happy words about hope, friendship, and love here. 
+We also see some words that may not be used joyfully by Austen ("found", "present"); we will discuss this in more detail in Section \@ref(most-positive-negative).
+
+We can also examine how sentiment changes throughout each novel. We can do this with just a handful of lines that are mostly dplyr functions. First, we find a sentiment score for each word using the Bing lexicon and `inner_join()`. 
+
+Next, we count up how many positive and negative words there are in defined sections of each book. We define an `index` here to keep track of where we are in the narrative; this index (using integer division) counts up sections of 80 lines of text.
+#다음으로, 우리는 각 책의 정의된 섹션에 얼마나 많은 긍정적인 단어와 부정적인 단어가 있는지 세어본다. 여기서 우리는 서술에서 우리가 어디에 있는지 추적하기 위해 '색인'을 정의한다. 이 색인은 (정수 d를 사용한다.
+#스토리에 따라 감정이 달라지는 것을 캐치 하고 싶은것
+#스토리, 뭉탱이로 단어르 묶어서 감정을 알아보면 됨
+
+```{r janeaustensentiment, dependson = "tidy_books"}
+library(tidyr)
+library(tidyverse)
+
+jane_austen_sentiment_count <- tidy_books %>%
+  inner_join(get_sentiments("bing"), by="word") %>%
+  #bing으로 word단위로 join
+  count(book, index = linenumber %/% 80, sentiment)
+
+#### count 함수 뜯어보기
+#book의 개수
+tidy_books %>%
+  inner_join(get_sentiments("bing"), by="word") %>%
+  count(book)
+
+#책별, 감정별 개수
+tidy_books %>%
+  inner_join(get_sentiments("bing"), by="word") %>%
+  count(book, sentiment)
+
+#index를 만들어서 linenumber %/% 80
+#80줄별 감정 개수
+tidy_books %>%
+  inner_join(get_sentiments("bing"), by="word") %>%
+  count(book, index = linenumber %/% 80, sentiment)
+####
+
+jane_austen_sentiment_count
+
+jane_austen_sentiment <- jane_austen_sentiment_count %>%
+  spread(sentiment, n, fill = 0) %>%
+          #sentiment라는 colomn을 positive, negative로 만듦 
+  mutate(sentiment = positive - negative)
+          #이 두개의 차이를 sentiment라는 최종적인 colomn을 만듦
+jane_austen_sentiment
+```
+
+Now we can plot these sentiment scores across the plot trajectory of each novel. Notice that we are plotting against the `index` on the x-axis that keeps track of narrative time in sections of text.
+# 이제 우리는 각 소설의 줄거리 궤도에 걸쳐 이러한 감정 점수를 표시할 수 있다. 우리는 텍스트의 섹션에서 서술 시간을 추적하는 x축의 '지수'에 대해 음모를 꾸미고 있다는 것을 주목한다.
+
+```{r sentimentplot, dependson = "janeaustensentiment", fig.width=6, fig.height=7, fig.cap="Sentiment through the narratives of Jane Austen's novels"}
+library(ggplot2)
+
+head(jane_austen_sentiment)
+
+ggplot(jane_austen_sentiment, aes(x=index, y=sentiment, fill = book)) +
+  geom_col(show.legend = FALSE) +
+ facet_wrap(~book, ncol = 2, scales = "free_x")
+ #facet_wrap: 책마다 나눠서 그리기
+ #sentiment 값이 높을수록 긍정적인 것
+```
+
+## 단어 사전 세개 비교
+## Comparing the three sentiment dictionaries
+
+With several options for sentiment lexicons, you might want some more information on which one is appropriate for your purposes. Let's use all three sentiment lexicons and examine how the sentiment changes across the narrative arc of *Pride and Prejudice*. First, let's use `filter()` to choose only the words from the one novel we are interested in.
+
+```{r pride_prejudice, dependson = "tidy_books"}
+pride_prejudice <- tidy_books %>% 
+  filter(book == "Pride & Prejudice")
+
+pride_prejudice
+```
+
+Now, we can use `inner_join()` to calculate the sentiment in different ways. 
+
+```{block, type = "rmdnote"}
+Remember from above that the AFINN lexicon measures sentiment with a numeric score between -5 and 5, while the other two lexicons categorize words in a binary fashion, either positive or negative. To find a sentiment score in chunks of text throughout the novel, we will need to use a different pattern for the AFINN lexicon than for the other two. 
+```
+
+Let's again use integer division (`%/%`) to define larger sections of text that span multiple lines, and we can use the same pattern with `count()`, `spread()`, and `mutate()` to find the net sentiment in each of these sections of text.
+
+```{r}
+head(pride_prejudice)
+```
+
+AFINN 사전을 이용하여 word기준 value구하기
+```{r eval=FALSE}
+afinn_tmp <- pride_prejudice %>% 
+  inner_join(get_sentiments("afinn"), by="word") %>% 
+  mutate(index = linenumber %/% 80)
+
+afinn_tmp
+```
+index별 value의 합을 구해서 값이 긍정적인지 부정적인지 알아보기(+/-)
+
+```{r}
+afinn <- afinn_tmp %>%
+  group_by(index) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "AFINN")
+
+afinn
+```
+bing 감성분석
+NRC에서 긍/부정만 가져온 감성분석
+```{r}
+bing_senti <- pride_prejudice %>% 
+    inner_join(get_sentiments("bing"),by="word") %>%
+    mutate(method = "Bing et al.")
+
+nrc_senti <- pride_prejudice %>% 
+    inner_join(get_sentiments("nrc") %>% 
+               #get_sentiments("nrc"): 여러개 감정을 가지고 있음
+                 filter(sentiment %in% c("positive","negative")),
+               #거기에서 긍/부정만 빼옴
+               by="word") %>%
+    mutate(method = "NRC")
+
+head(bing_senti)
+head(nrc_senti)
+```
+bing와_nr는 긍/부정만 나타내도록 만들었기에 
+'count' function을 사용하여 method별로, index별로 sentiment score 계산
+```{r}
+bing_and_nrc_count <-bind_rows(bing_senti,nrc_senti) %>%
+  count(method, index = linenumber %/% 80, sentiment) 
+
+head(bing_and_nrc_count)
+```
+bing_and_nrc가 positive - negative 한 값 구하기
+```{r}
+bing_and_nrc <- bing_and_nrc_count %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative)
+
+bing_and_nrc
+```
+afinn, bing_and_nrc 감성사전에 따라 색 다르게 그림
+```{r compareplot, dependson = "comparesentiment", fig.cap="(ref:comparecap)"}
+bind_rows(afinn, bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+#free_y: 똑같은 책이기에 X는 다 똑같기에 y를 축
+```
+결과: 이 책에서 NRC는 긍정이 많아서 나머지 두개의 사전을 선택!
+
+
+
+The three different lexicons for calculating sentiment give results that are different in an absolute sense but have similar relative trajectories through the novel. 
+
+We see similar dips and peaks in sentiment at about the same places in the novel, but the absolute values are significantly different. 
+
+The AFINN lexicon gives the largest absolute values, with high positive values. 
+
+The lexicon from Bing et al. has lower absolute values and seems to label larger blocks of contiguous positive or negative text. 
+
+The NRC results are shifted higher relative to the other two, labeling the text more positively, but detects similar relative changes in the text.
+
+Why is, for example, the result for the NRC lexicon biased so high in sentiment compared to the Bing et al. result? Let's look briefly at how many positive and negative words are in these lexicons.
+
+
+NRC에서의 긍정, 부정적인 단어 개수
+```{r eval=FALSE}
+get_sentiments("nrc") %>% 
+  filter(sentiment %in% c("positive", "negative")) %>% 
+  count(sentiment)
+```
+
+NRC에서의 긍정, 부정적인 단어 개수
+```{r echo=FALSE}
+nrc %>% 
+  filter(sentiment %in% c("positive", "negative")) %>% 
+  count(sentiment)
+```
+
+bing에서의 긍정, 부정적인 단어 개수
+```{r}
+get_sentiments("bing") %>% 
+  count(sentiment)
+```
+

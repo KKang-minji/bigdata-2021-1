@@ -1,0 +1,215 @@
+---
+title: "week_13a_tweet_data_analysis"
+author: "Jiho Yeo"
+date: "5/25/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load dependencies
+
+```{r}
+library(tidyverse)
+library(tidytext)
+#install.packages("rtweet")
+#install.packages("twitteR")
+library(rtweet)
+library(twitteR)
+
+Sys.setlocale("LC_ALL","Korean") # 언어 한글로
+```
+
+
+## Tweeter API Key 발급
+
+아래 링크를 참고하여 트위터 개발자 계정을 취득해야 합니다.  
+- https://www.citopes.com/entry/트위터-개발자-계정-취득하기
+
+계정을 취득했으면, 아래의 절차를 따라서 API Key와 Access Token을 발급합니다. 
+  1. https://apps.twitter.com 접속 (트위터 계정 생성 후 로그인 필수)
+  2. “Apps” → “Create New App” 클릭 (개발자 등록 필수)
+  3. “App Details” 기본사항 항목 입력
+  4. “Keys and Access Tokens” 발급
+  
+그 후, 아래 코드를 실행하면 Tweet에서 데이터를 가져오기 위한 준비를 마친겁니다.  
+
+```{r cars}
+api_key <- "5zj8FkarvdhIUzbebwX7orAH6"
+api_secret_key <- "fCigYwltVTNraP5DrsZKS1OqizLlyjjpISid0V1A5YzpgYYjEl"
+
+access_token <- "1399335514558267399-QsbhGE0LYvyFzMCbvu3201ilLF9wDU"
+access_token_secret <- "Zbcinm4tje31qTQQTKkmprvpbQdQ2vbO5woHcvzOgeFGL"
+
+options(httr_oauth_cache = TRUE)
+setup_twitter_oauth(api_key,api_secret_key,access_token,access_token_secret)
+```
+
+## 트위터 데이터 가져오기 - 방법 `twitteR` 라이브러리 이용
+
+특정한 검색어를 기반으로 트위터 데이터 크롤링하기  
+시작일, 종료일, 언어, 가져오는 게시글 수에 대한 정보 입력 가능  
+영국밴드 coldplay 단어가 포함된 트윗 가져오기
+
+```{r}
+keyword <- enc2utf8("#coldplay -filter:retweets")
+tweets <- searchTwitter(keyword, n=1000,lang="en", #영어만 가져와라 
+                        since="2018-01-01", until="2021-05-25") 
+#리스트 형태로 들어옴
+#그래서 리스트로 데이터 프레임으로 바꾸는 함수 사용
+tweet_df<-twListToDF(tweets)
+```
+
+## 트위터 데이터 가져오기 - 방법 2:`rtweet` 라이브러리 이용
+
+```{r}
+token= rtweet::create_token("minji",
+                            api_key,
+                            api_secret_key,
+                            access_token,
+                            access_token_secret)
+```
+
+```{r}
+cold_tweet <- search_tweets("coldplay", n=5000, include_rts = FALSE, lang="en")
+radio_tweet <- search_tweets("radiohead", n=5000, include_rts = FALSE, lang="en")
+#리트윗으로 된 트위터는 가져오지 않기, 언어: 영어
+
+```
+
+```{r}
+#위와 같은 것 교수님이 파일로 주셔서 여는 것
+cold_tweet <- read_rds("data/cold_tweet.rds")
+radio_tweet <- read_rds("data/radio_tweet.rds")
+```
+
+
+## 기초적 통계 출력
+
+```{r}
+tmp <- users_data(cold_tweet)
+
+# plot time-series
+ts_plot(cold_tweet, by="minutes") #분별 트윗
+ts_plot(cold_tweet, by="hours")  #시간별 트윗
+ts_plot(cold_tweet, by="days")   #일별 트윗
+```
+
+## Tokenization
+
+```{r}
+radio_token <- radio_tweet %>%
+  select(text) %>%
+  unnest_tokens(word, text, token = "tweets") %>%
+  anti_join(stop_words)%>%
+  mutate(name="radiohead")
+
+cold_token <- cold_tweet %>%
+  select(text) %>%
+  unnest_tokens(word, text, token = "tweets") %>%
+  anti_join(stop_words)%>%
+  mutate(name="coldplay")
+
+dat_token <- rbind(radio_token, cold_token)
+```
+
+## Visualization
+
+```{r}
+vis_by_band <- dat_token %>%
+  count(name, word, sort = TRUE) %>%
+  group_by(name) %>%
+  slice_max(n, n=15) %>%
+  ungroup()
+
+ggplot(vis_by_band, aes(n, fct_reorder(word,n), fill = name))+
+  geom_col()+
+  labs(y = NULL) +
+  facet_wrap(~name, scales = "free")
+```
+
+## Stop words
+
+불용어가 많이 존재하므로, 처리해줄 필요가 있음
+
+```{r}
+remove_words <- c("coldplay","@coldplay","radiohead","https","t.co",
+                  "tiktok_us","tiktok_uk")
+
+custom_stop_words <- bind_rows(tibble(word = remove_words,  
+                                      lexicon = c("custom")), 
+                               stop_words)
+
+dat_token <- dat_token %>% anti_join(custom_stop_words)
+```
+
+## Visualization again
+
+```{r}
+vis_by_band <- dat_token %>%
+  count(name, word, sort = TRUE) %>%
+  group_by(name) %>%
+  slice_max(n, n=15) %>%   #15개로 추림
+  ungroup()
+
+ggplot(vis_by_band, aes(n, fct_reorder(word,n), fill = name))+
+  geom_col()+
+  labs(y = NULL) +
+  facet_wrap(~name, scales = "free")
+```
+
+Word 순서가 Count의 오름차순으로 예쁘게 정렬되지 않음  
+grid.arrange를 사용해서 각각 plot 하는 방법이 있음
+
+```{r}
+library(gridExtra)
+
+p_cold <- ggplot(vis_by_band %>% filter(name=="coldplay"), 
+                 aes(n, fct_reorder(word,n))) + 
+                   geom_col(fill=2)+
+                   labs(y = NULL,title = "Coldplay")
+
+p_radio <- ggplot(vis_by_band %>% filter(name=="radiohead"), 
+                 aes(n, fct_reorder(word,n))) + 
+                   geom_col(fill=3)+
+                   labs(y = NULL,title = "Radiohead")
+
+
+#여러개의 ggplot을 하나에 넣어줌
+grid.arrange(p_cold, p_radio, ncol=2)
+```
+
+## ETC
+
+한글 트위터 데이터 가져오기
+
+```{r}
+akmu_tweet <- search_tweets("악동뮤지션", n=5000, include_rts = FALSE, lang="ko")
+```
+
+
+특정 Twitter User의 Timeline 가져오기
+
+```{r}
+token= rtweet::create_token("sentiment_analysis_hnu",
+                            api_key,
+                            api_secret_key,
+                            access_token,
+                            access_token_secret)
+
+elon_timeline <- get_timelines(c("@elonmusk"),
+                               n = 1000,
+                               token=token)
+```
+
+## Quiz
+Tweeter API키를 발급받고 트위터 크롤링을 해보세요.  
+특정 Keyword를 정해서 tweet에서 데이터를 크롤링 해보고, 텍스트마이닝을 해보세요.
+Hiclass에 Rmd 파일을 제출하시면 됩니다. 
+
+
+

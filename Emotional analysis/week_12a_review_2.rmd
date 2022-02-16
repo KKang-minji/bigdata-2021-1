@@ -1,0 +1,300 @@
+---
+title: "Review_2"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Review of sentiment analysis
+
+## Import libraries
+
+```{r}
+library(tidytext)
+library(tidyverse)
+library(janeaustenr)
+```
+
+## 감성어 사전 읽어오기
+
+```{r}
+bing <- get_sentiments("bing")
+nrc <- get_sentiments("nrc")
+affin <- get_sentiments("afinn")
+
+head(bing)
+head(affin)
+head(nrc)
+
+table(affin$value)
+table(nrc$sentiment)
+```
+
+## Tokenization
+
+```{r}
+tidy_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+
+tidy_books
+```
+
+## Sentiment join (bing 감성어 사전 사용)
+
+```{r}
+# 책별로, 80줄 단위(index)별로, negative & positive 사용빈도(n) 추출
+jane_austen_sentiment_count <- tidy_books %>%
+  inner_join(bing, by="word") %>%
+  count(book, index = linenumber %/% 80, sentiment)
+
+jane_austen_sentiment_count
+
+# sentiment 변수를 spread하여 positive, negative 컬럼을 새로 생성
+# positive 단어수와 negative 단어수의 차이로 sentiment_score 계산
+jane_austen_sentiment <- jane_austen_sentiment_count %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment_score = positive - negative)
+
+jane_austen_sentiment
+```
+
+
+## Visualize sentiment score
+
+80줄 단위 간격으로 sentiment score 시각화
+
+```{r}
+ggplot(jane_austen_sentiment, 
+       aes(x=index, y=sentiment_score, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+
+Chapter 단위로 sentiment score 시각화
+
+```{r}
+# 책별로, Chapter 별로, negative & positive 사용빈도(n) 추출
+jane_austen_sentiment_count <- tidy_books %>%
+  inner_join(bing, by="word") %>%
+  count(book, chapter, sentiment)
+
+# sentiment 변수를 spread하여 positive, negative 컬럼을 새로 생성
+# positive 단어수와 negative 단어수의 차이로 sentiment_score 계산
+jane_austen_sentiment_chapter <- jane_austen_sentiment_count %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment_score = positive - negative)
+
+# 시각화
+ggplot(jane_austen_sentiment_chapter,
+       aes(x=chapter, y=sentiment_score, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+
+## Sentiment score 계산 (affin 감성어 사전 사용)
+
+affin 감성어 사전의 경우 bing 사전에 비해 갯수는 적지만 단어의 score가 명시되어 있어서, 긍정/부정의 강도를 표현하기가 더 용이함
+
+```{r}
+table(affin$value)
+
+table(bing$sentiment)
+```
+
+```{r}
+# 책별로, 80줄 단위(index)별로, 등장한 단어와 각 단어의 긍/부정값(value) 추출
+# index 별로 value의 합을 계산하여 sentiment_score로 정의
+jane_austen_sentiment_affin <- tidy_books %>%
+  inner_join(affin, by="word") %>%
+  group_by(book, index = linenumber %/% 80) %>%
+  summarise(sentiment_score=sum(value))
+
+ggplot(jane_austen_sentiment_affin, 
+       aes(x=index, y=sentiment_score, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+
+## Sentiment score 계산 (nrc 감성어 사전 사용)
+
+```{r}
+# nrc 감성어 사전에서 긍정/부정만 추출
+nrc_pn <- nrc %>% filter(sentiment %in% c("positive","negative"))
+
+# 책별로, 80줄 단위(index)별로, negative & positive 사용빈도(n) 추출
+jane_austen_sentiment_count <- tidy_books %>%
+  inner_join(nrc_pn, by="word") %>%
+  count(book, index = linenumber %/% 80, sentiment)
+
+# sentiment 변수를 spread하여 positive, negative 컬럼을 새로 생성
+# positive 단어수와 negative 단어수의 차이로 sentiment_score 계산
+jane_austen_sentiment_nrc <- jane_austen_sentiment_count %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment_score = positive - negative)
+
+# 시각화
+ggplot(jane_austen_sentiment_nrc, 
+       aes(x=index, y=sentiment_score, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+
+## Most common positive and negative words
+
+```{r}
+# Bing 감성어 사전을 Join 한 후,
+# 단어별, 긍정/부정별로 얼마나 많은 횟수만큼 사용됐는지 count
+
+bing_word_counts <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE)
+
+bing_word_counts
+```
+
+- 시각화
+
+```{r}
+# sentiment별(긍정/부정별), 가장 많이 사용된 단어 10개를 추출
+# word를 단어빈도 기준으로 재정렬한 후, 
+# ggplot의 geom_col으로 시각화
+
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  top_n(n=10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL)
+```
+
+## 이상한 단어에 대한 보정
+
+miss라는 단어는 사실 부정적 표현이라고 볼 수 없음. 
+이에 대한 보정을 수행
+
+```{r}
+# 기존의 stop_words와 새롭게 추가한 단어를 합쳐서 
+# 새로운 custom stop_words를 만듬
+stop_words
+
+custom_stop_words <- bind_rows(tibble(word = c("miss"),  
+                                      lexicon = c("custom")), 
+                               stop_words)
+
+custom_stop_words
+```
+
+```{r}
+# 단어 보정
+# stop_words들을 제거함
+tidy_books <- tidy_books %>%
+  anti_join(custom_stop_words)
+
+# 단어별, 긍정/부정별로 얼마나 많은 횟수만큼 사용됐는지 count
+bing_word_counts <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE)
+
+# sentiment별(긍정/부정별), 가장 많이 사용된 단어 10개를 추출
+# word를 단어빈도 기준으로 재정렬한 후, 
+# ggplot의 geom_col으로 시각화
+
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  top_n(n=15) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL)
+```
+
+## Wordcloud
+
+- wordcloud2 라이브러리를 사용하여 시각화
+
+```{r}
+library(wordcloud2)
+library(viridis)
+
+viridis_pal(option = "plasma")(6)
+
+# wordcloud용 데이터 생성
+dat_wordcloud <- bing_word_counts %>% 
+  mutate(col=ifelse(sentiment=="positive",
+                    viridis_pal(option = "plasma")(6)[5],
+                    viridis_pal(option = "plasma")(6)[2])) %>%
+  select(word,n,col)
+
+wordcloud2(dat_wordcloud,
+           color = dat_wordcloud$col, 
+           backgroundColor = "black",
+           fontFamily = '나눔바른고딕',
+           minSize=10, 
+           shape = "circle",
+           size=0.6)
+```
+
+- wordcloud 라이브러리를 사용하여도 무방함
+
+```{r}
+library(wordcloud)
+library(reshape2)
+
+bing_word_counts %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray20", "gray80"),
+                   max.words = 100,
+                   scale=c(3,.1))
+
+tmp2 <- bing_word_counts %>%
+  spread(sentiment, n, fill = 0)
+tmp2 <- tmp2 %>% data.frame()
+row.names(tmp2) <- tmp2$word
+tmp2$word<-NULL
+tmp2 %>% comparison.cloud(colors = c("gray20", "gray80"),
+                   max.words = 100,
+                   scale=c(2,.1))
+```
+
+## 책별로 긍/부정 단어 시각화
+
+```{r}
+# 책별로, 단어별로, 긍정/부정별로 단어수 count
+# negative 단어는 음수로 표시
+# 책별로, 감정별로 그룹해서 가장 많이 등장한 단어 10개씩 뽑기
+pos_neg <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, word, sentiment, sort = TRUE) %>%
+  mutate(n = ifelse(sentiment == "negative", -n, n)) %>%
+  group_by(book,sentiment) %>%
+  slice_max(abs(n), n = 10, with_ties = F)
+
+# 시각화
+ggplot(data=pos_neg, aes(x=n,
+                         y=reorder(word,n), 
+                         fill = sentiment)) +
+  geom_col() +
+  labs(x = "Contribution to sentiment", y = NULL) + 
+  facet_wrap(.~book, scales = "free")
+```
+
+
+

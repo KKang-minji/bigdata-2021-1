@@ -1,0 +1,453 @@
+---
+title: "Chpter 1 The tidy text format"
+author: "Jiho Yeo"
+date: '2021 2 28 '
+output: 
+  html_document: 
+    theme: simplex
+editor_options: 
+  chunk_output_type: inline
+---
+#단어사용 빈도
+
+
+## 1. The tidy text format
+텍스트를 예쁘게 만드는것
+
+- Tidy text format: **a table with one-token-per-row.**
+- Token: A meaningful unit of text, such as a word, that we are interested in using for analysis
+하나의 단위
+
+- Tokenization: Process of splitting text into tokens.
+전체텍스트를 쪼개서 token으로 만드는 것
+
+### 1.1 Contrasting tidy text with other data structures
+
+- String (Character vector)
+- Corpus 말뭉치 (Chapter 5)
+- Document-term matrix (see Chapter 3)
+   단어를 뽑아서 몇번쓰였는지
+
+### 1.2 The `unnest_tokens()` function
+string을 어떻게 tokenization을 해서 tinytext로 만드는지 보자
+```{r}
+text <- c("Because I could not stop for Death -",
+          "He kindly stopped for me -",
+          "The Carriage held but just Ourselves -",
+          "and Immortality")  #vector
+
+text
+
+class(text)
+```
+
+This is vector, not a tidy text. 
+Let's convert vector to data frame
+
+```{r}
+#install.packages("tidyverse")
+library(tidyverse)
+library(dplyr)
+text_df <- tibble(line = 1:4, text = text)  #tibble = dataframe과 역할이 같음
+#line = 1:4: 1~4까지 연속으로 숫자가 들어가는것
+
+text_df
+
+class(text_df)
+```
+
+A tibble is a modern class of data frame within R, available in the dplyr.
+
+Each row is still made up of multiple combined words.
+
+Let's convert it to **one-token-per-document-per-row**
+#문장을 단어단어 다쪼개서 나눠보쟈
+
+A token is a meaningful unit of text, most often a word, that we are interested in using for further analysis, and tokenization is the process of splitting text into tokens.
+
+***엄청 강력한 코드***
+'unnest_tokens' :텍스트를 개별 토큰으로 분해
+
+```{r}
+#install.packages("tidytext")
+library(tidytext)
+
+
+?unnest_tokens 
+
+text_df
+
+tt <- text_df %>%
+  unnest_tokens(word, text) # word - 새롭게 만들 컬럼 이름; # text - 넣어줄 컬럼 이름
+          #to_lower=True 라는 걸 안써놔도 unnest_tokens에서는 True로 설정돼서 다 소문자로 나옴
+tt
+
+tt <- text_df %>%
+  unnest_tokens(word, text, drop=FALSE)
+tt
+```
+
+There is one token (word) in each row of the new data frame;
+
+- Other columns, such as the line number each word came from, are retained.
+- Punctuation (구두점) has been stripped.
+- By default, `unnest_tokens()` converts the tokens to lowercase, which makes them easier to compare or combine with other datasets.
+
+
+
+```{r images}
+knitr::include_graphics("images/tmwr_0101.png")
+
+```
+
+
+### 1.3 Tidying the works of Jane Austen {#tidyausten}
+
+`janeaustenr` package provides these texts in a one-row-per-line format
+
+```{r}
+#install.packages("janeaustenr")
+library(janeaustenr)
+#install.packages("dplyr")
+library(dplyr)
+#install.packages("stringr")
+library(stringr)
+```
+책 모아져있는 것 분석
+```{r}
+austen_books()
+View(austen_books())
+austen_raw_text<-austen_books()
+
+table(austen_raw_text$book) #어느책이 길고 짧은지 알 수 있음
+```
+
+`linenumber` quantity to keep track of lines in the original format 
+and a `chapter` (using a regex) to find where all the chapters are.
+
+```{r}
+original_books <- austen_books() %>%
+  group_by(book) %>%                  #그룹별로 따로 하고 싶을때 group_by와 mutate를 같이 씀 
+  mutate(linenumber = row_number(),       #linenumber, chapter 
+         chapter = cumsum(str_detect(text, 
+                                     regex("^chapter [\\divxlc]",
+                                           ignore_case = TRUE)))) %>%
+  ungroup()
+
+original_books
+```
+
+- `cumsum`: Cumulative Sums - 누적합을 계산
+
+```{r}
+?cumsum
+```
+
+- `str_detect` : Detect pattern in a string - Text를 input으로 해서 특정 패턴을 찾음
+
+```{r}
+chp_detect<-str_detect(austen_raw_text$text,
+                       regex("^chapter [\\divxlc]",ignore_case = TRUE))
+                #regex("^chapter [\\divxlc]",ignore_case = TRUE) 대신 chapter을 넣으면
+                #'Chapter 숫자'를 찾지 못함. 다른 것 까지 다 나옴
+                #'^chapter':chapter,  []: 대괄호안에 있는건 그안에 뭐가 됐든 다 찾아달라 ,                       '\\d': 숫자,  'ivxlc': 로마문자
+
+# ignore_case() : 패턴에서 대.소문자 무시
+
+chp_detect[1:100]
+
+chp_cumsum <- cumsum(chp_detect)
+
+chp_cumsum[1:100]
+```
+***고차원 코딩***
+- `regex` : regular expression - 정규표현식
+https://cceeddcc.tistory.com/110 참고
+https://data-make.tistory.com/44 참고
+
+```{r}
+text_tmp <- c('Chapter 5', 'chapter 1', 'section', 'chaptery', 'chapter start')
+
+str_detect(text_tmp, 'chapter') #chapter가 들어가 있는 것을 찾아줌
+str_detect(text_tmp, regex("^chapter \\d",ignore_case = TRUE)) 
+#\\d: 숫자
+#ignore_case = TRUE: 대문자 소문자 구분하지말고 chapter 다 뽑아줘
+```
+
+Restructure it in the one-token-per-row format
+
+```{r}
+library(tidytext)
+
+tidy_books <- original_books %>%
+  unnest_tokens(word, text)
+tidy_books 
+```
+
+Remove stop words  
+Stop words: words that are not useful for an analysis (“the”, “of”, “to”)
+
+```{r}
+data(stop_words)
+
+tidy_books <- tidy_books %>%
+  anti_join(stop_words)  #stop_words를 빼겠다.
+tidy_books 
+```
+
+Find the most common words in all the books  
+Use `count()` in dplyr package
+
+```{r}
+tidy_books
+
+tidy_books %>%
+  count(word, sort = TRUE) 
+
+
+```
+
+#### Visualization of count
+
+```{r}
+library(ggplot2)
+
+tidy_books %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 600) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word)) +
+  geom_col() +
+  labs(y = NULL)
+
+
+vis_text <- tidy_books %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 600) %>%
+  mutate(word = reorder(word, n))
+vis_text 
+
+ggplot(vis_text, aes(n, word))+
+  geom_col()+
+  labs(y = NULL)
+
+#reorder: 그래프 예쁘게 정렬  
+#reorder(정렬하고 싶은 변수, 연속형 데이터, function)
+#여기서 '정렬하고 싶은 변수'는 factor 형태이어야 함. 주의!
+```
+
+#### ggplot의 geom 종류 
+
+```{r}
+knitr::include_graphics("images/ggplot2_geoms.png")
+```
+
+### 1.4 The gutenbergr package
+
+The gutenbergr package provides access to the public domain works from the Project Gutenberg collection.
+
+The package includes tools both for downloading books (stripping out the unhelpful header/footer information), and a complete dataset of Project Gutenberg metadata that can be used to find works of interest. 
+
+In this book, we will mostly use the function `gutenberg_download()` that downloads one or more works from Project Gutenberg
+
+### 1.5 Word frequencies (단어 빈도수 테이블 만들기)
+
+A common task in text mining is to look at word frequencies
+
+Compare frequencies across different texts.
+
+H.G. Wells - The Time Machine, The War of the Worlds, The Invisible Man, and The Island of Doctor Moreau.
+
+```{r}
+#install.packages("gutenbergr")
+library(gutenbergr)
+
+View(gutenberg_metadata)
+
+hgwells <- gutenberg_download(c(35, 36, 5230, 159))
+```
+
+Convert to tidy text
+
+```{r}
+tidy_hgwells <- hgwells %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words)
+
+tidy_hgwells
+
+tidy_hgwells%>%
+  count(word, sort = TRUE) %>%
+  filter(n > 200) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word)) +
+  geom_col() +
+  labs(y = NULL)
+
+```
+
+Word counts
+
+```{r}
+tidy_hgwells %>%
+  count(word, sort = TRUE)
+```
+
+Brontë sisters 
+
+```{r}
+bronte <- gutenberg_download(c(1260, 768, 969, 9182, 767))
+```
+
+```{r}
+tidy_bronte <- bronte %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words)
+
+tidy_bronte 
+```
+
+Word count (어떤 단어를 많이 썼는 지 알 수 있음)
+
+```{r}
+tidy_bronte %>%
+  count(word, sort = TRUE)  
+```
+
+Calculate the frequency for each word for the works of Jane Austen, the Brontë sisters, and H.G. Wells
+Jane Austen, the Brontë sisters, and H.G. Wells 작품에 대한 각 단어의 빈도 계산
+```{r}
+#install.packages("tidyr")
+library(tidyr)
+
+frequency <- bind_rows(mutate(tidy_bronte, author = "Brontë Sisters"), 
+                       mutate(tidy_hgwells, author = "H.G. Wells"), 
+                       mutate(tidy_books, author = "Jane Austen")) %>% 
+  mutate(word = str_extract(word, "[a-z']+")) %>%
+  count(author, word) %>%
+  group_by(author) %>%
+  mutate(proportion = n / sum(n)) %>% 
+  select(-n) %>% 
+  spread(author, proportion) %>% 
+  gather(author, proportion, `Brontë Sisters`:`H.G. Wells`)
+
+
+frequency
+```
+
+#### 코드 뜯어보기 
+
+```{r}
+mutate(tidy_bronte, author = "Brontë Sisters")
+tidy_bronte$author <- "Brontë Sisters"
+
+# 3개의 data frame을 하나로 합침
+tmp <- bind_rows(mutate(tidy_bronte, author = "Brontë Sisters"),
+                                          #mutate를 통해 tidy_bronte 데이터 뒤에 작가이름 추가
+                       mutate(tidy_hgwells, author = "H.G. Wells"), 
+                       mutate(tidy_books, author = "Jane Austen")) %>% 
+  # 모든 알파벳, ' 가 구성된 단어만 추출
+  mutate(word = str_extract(word, "[a-z']+")) %>%
+  # Author, word 별로 count 계산
+  count(author, word) %>%
+  # Author 별로 그룹하여 각 단어의 사용비율 계산
+  group_by(author) %>%
+  mutate(proportion = n / sum(n)) 
+
+#proportion:비율, n:단어사용횟수
+
+#비율 구하는 이유: 작가마다 책쓴 개수가 다름. 즉, 작가마다 text길이가 다르므로 단어사용비율을 가지고 상대적으로 비교해야함
+
+tmp2 <- tmp %>% 
+  select(-n) %>%   #n(사용횟수)를 없애버림
+  # author 컬럼을 없애고 넓게 퍼뜨려라
+  spread(author, proportion) #spread: 세로 데이터를 가로로 붙임
+                             #key: author, value:proportion
+# author, proportion 컬럼을 다시 만들고 데이터를 모아라
+tmp3 <- tmp2 %>%  
+  gather(author, proportion, `Brontë Sisters`:`H.G. Wells`)
+#gather: 세로로 다시 만듦 #"Jane Austen"만 빼고 함
+#"Jane Austen"기준으로 다른 작가들을 붙임
+
+#tmp3 사용 목적: 해당 단어를 "Jane Austen"와 다른작가가 쓰는 비율을 비교하겠다
+```
+
+`tidyr`의 
+```{r}
+knitr::include_graphics("images/tidyr_functions.png")
+getwd()
+```
+
+- `str_extract`
+
+```{r}
+shopping_list <- c("apples x4", "bag of flour", "bag of sugar", "milk x2", "doctor's")
+
+str_extract(shopping_list, "\\d")
+str_extract(shopping_list, "[a-z]\\d")
+str_extract(shopping_list, "[a-z]")
+str_extract(shopping_list, "[a-z]+")
+str_extract(shopping_list, "[a-z']+")
+```
+
+```{r}
+library(scales)
+
+plot(frequency$proportion,  frequency$'Jane Austen')
+#scale이 너무 작아서 x와 y의 관계가 잘 보이지 않음
+
+#scale이 너무 작거나 클때 log scale 사용
+plot(log(frequency$proportion), log(frequency$`Jane Austen`))
+#둘사이가 선형성이 있다는 것을 알 수 있음
+
+# expect a warning about rows with missing values being removed
+ggplot(frequency, aes(x = proportion, y = `Jane Austen`, 
+      #frequency:사용할 데이터                
+                      color = abs(`Jane Austen` - proportion))) +
+  #frequency에서 Jane Austen 컬럼의 proportion과 다른 작가의 proportion의 차이만큼 색을 다르게 하겠다.
+  geom_abline(color = "gray40", lty = 2) +
+  geom_jitter(alpha = 0.1, size = 2.5, width = 0.3, height = 0.3) +
+  #geom_jitter를 사용하면 알아서 퍼트려줌
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  scale_color_gradient(limits = c(0, 0.001), 
+                       low = "darkslategray4", high = "gray75") +
+                      #낮을수록 어둡게 높을수록 옅게 그림
+  facet_wrap(~author, ncol = 2) + #facet_wrap: 나누서 그려줌
+  #작가에 따라 나눠서 그려줘
+  theme(legend.position="none") +
+  labs(y = "Jane Austen", x = NULL)
+ #legend와 x축을 없애서 그림
+
+
+# Jane Austen 대비 다른 두 작가가 단어의 빈도 상관성을 보기위해
+# Brontë Sisters은 Jane Austen와 비슷한 단어를 사용
+#  H.G.Well은 Jane Austen와 다른 단어를 많이 사용
+```
+
+
+
+```{r}
+?percent_format
+```
+
+
+Quantify how similar and different these sets of word frequencies
+정량화 시킴
+관계가 유사하면 1
+관계가 거의 없으면 0
+```{r}
+cor.test(data = frequency[frequency$author == "Brontë Sisters",],
+         ~ proportion + `Jane Austen`)
+
+cor.test(data = frequency %>% filter(author == "Brontë Sisters"),
+         ~ proportion + `Jane Austen`)
+```
+
+```{r}
+cor.test(data = frequency[frequency$author == "H.G. Wells",], 
+         ~ proportion + `Jane Austen`)
+```
+
+** 비교해보면 Jane Austen와 Brontë Sisters의 관계가 유사함 

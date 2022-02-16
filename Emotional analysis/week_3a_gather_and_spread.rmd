@@ -1,0 +1,69 @@
+---
+title: "gather_and_spread"
+author: "jiho yeo"
+date: "3/16/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Import library
+
+```{r}
+library(tidyr)
+```
+
+
+## `tidyr`의 gather와 spread
+- 데이터 형태의 변환 
+- Wide (가로로 김) 에서 Long (세로로 김) >> `gather`
+- Long (세로로 김) to Wide (가로로 김) >> `spread`
+
+```{r}
+knitr::include_graphics("images/tidyr_functions.png")
+```
+
+## Example
+
+- Exam data
+```{r}
+?mtcars
+mtcars
+
+mtcars$name = rownames(mtcars)
+#name이라는 컬럼을 새로 만들어서 mtcars의 rowname을 name으로 만듬
+rownames(mtcars) = NULL
+
+mtcars
+
+library(dplyr)
+
+mtcars01 <- mtcars %>% select(name, mpg, cyl, disp)
+# mpg: Miles/(US) gallon; 연비
+# cyl: Number of cylinders; 실린더 크기
+# disp: Displacement; 배기량
+
+mtcars01
+```
+
+### gather(): wide to Long (가로는 줄어들고 세로는 늘어남)
+
+```{r}
+mtcarsLong <- mtcars01 %>% gather(key='key', value='value', mpg, cyl, disp)
+
+mtcarsLong %>% arrange(name)
+ 
+```
+
+
+###spread(): Long to Wide (다시 펼쳐짐)
+
+```{r}
+mtcarsWIDE <- mtcarsLong %>% spread(key='key', value='value')
+
+mtcarsWIDE
+```

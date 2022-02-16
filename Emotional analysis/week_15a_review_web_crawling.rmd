@@ -1,0 +1,308 @@
+---
+title: "week_15a_review_web_crawling"
+author: "Jiho Yeo"
+date: "6/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 실습
+
+- 지난번에 배운 `RSelenium`을 통해 Youtube와 Instagram 데이터 크롤링을 해봅시다
+```{r}
+Sys.setlocale("LC_ALL","Korean") # 언어 한글로
+```
+
+cd C:\r-selenium
+java -Dwebdriver.gecko.driver="geckodriver.exe" -jar selenium-server-standalone-4.0.0-alpha-1.jar -port 4445
+```{r}
+library(httr)
+library(rvest)
+#install.packages("RSelenium")
+library(RSelenium)
+```
+```{r}
+remD <- remoteDriver(port=4445L, #포트번호 입력
+                     browserName="chrome")
+
+remD$open() # 크롬이 열리게 됨
+```
+
+## 1. Youtube
+
+- https://youtu.be/TcMBFSGVi1c
+- 어벤져스 앤드게임 트레일러 영상입니다.
+- 해당 링크의 댓글을 크롤링해서 데이터 시각화를 해보세요.
+- 댓글에 대한 감성분석도 여력이 되면 해봅시다. 
+
+```{r}
+# 동영상 링크로 유튜브 접속
+remD$navigate("https://youtu.be/TcMBFSGVi1c")
+
+# Scroll down으로 더 많은 댓글 출력
+for (i in 1:10){
+  remD$executeScript("window.scrollTo(50000,70000)")
+  Sys.sleep(1)
+}
+
+# 페이지 소스 가져오기
+html <- remD$getPageSource()[[1]]
+html <- read_html(html)
+
+youtube_comments <- html %>% 
+  html_nodes("#content-text") %>% 
+  html_text()
+
+# 정규표현식을 통한 데이터 정제
+youtube_comments <- gsub("\n","",youtube_comments)
+```
+
+
+### 단어 시각화
+
+```{r}
+library(KoNLP)
+library(tidytext)
+library(tidyverse)
+
+original_comment <- tibble(id=1:length(youtube_comments),text=youtube_comments)
+
+word_comment <- original_comment%>%
+  unnest_tokens(input = text,
+                output = word,
+                token = SimplePos09,
+                drop = FALSE)
+
+
+#write_rds(word_comment,"data/word_comment.rds")
+
+```
+- 명사 가져오기
+
+```{r}
+n_done <- word_comment %>%
+  filter(str_detect(word, "/n")) %>% # 명사만 추출
+  mutate(pos_done  = str_remove(word, "/.*$")) %>% # 형태소 정보 제거
+  filter(nchar(pos_done) > 1)%>% 
+  ungroup()
+```
+
+- 동사/형용사 가져오기
+
+```{r}
+p_done <- word_comment %>%
+  filter(str_detect(word, "/p")) %>% 
+  mutate(pos_done =str_replace_all(word,"/.*$", "다")) %>%
+  filter(nchar(pos_done) > 1) %>% 
+  ungroup()
+```
+
+- 합치기
+
+```{r}
+pos_done <- bind_rows(n_done, p_done) %>% 
+  arrange(pos_done) %>% 
+  select(id, pos_done) 
+
+pos_done
+```
+
+#### 단어출현빈도
+
+```{r}
+# 전체 명사/동사/형용사
+pos_done %>%
+  count(pos_done, sort = TRUE) %>%
+  filter(n >10) %>%
+  mutate(pos_done = reorder(pos_done, n)) %>%
+  ggplot(aes(pos_done, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+# 명사만
+n_done %>% 
+  count(pos_done, sort = TRUE) %>%
+  filter(n >8) %>%
+  mutate(pos_done = reorder(pos_done, n)) %>%
+  ggplot(aes(pos_done, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+# 동사/형용사만
+p_done %>%
+  count(pos_done, sort = TRUE) %>%
+  filter(n >8) %>%
+  mutate(pos_done = reorder(pos_done, n)) %>%
+  ggplot(aes(pos_done, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+
+```{r}
+library(wordcloud2)
+
+n_done_count <- n_done %>% count(pos_done)
+
+wordcloud2(data=n_done_count,fontFamily = '나눔바른고딕', 
+           size=0.5,
+           minSize=5)
+```
+
+
+
+
+## 2. Instagram
+
+- 해시태그 "성심당"을 검색해서 게시글을 크롤링 해봅시다. 
+- Word cloud를 만들고, 단어의 freqeuncy plot을 만들어보세요
+
+## 인스타그램에서 해시태그로 검색
+
+```{r}
+# 해시태그 입력
+search_name <- "성심당"
+remD$navigate(paste0("https://www.instagram.com/explore/tags/",search_name))
+```
+
+## 게시글들의 링크 가져오기
+
+```{r}
+# html Source 가져오기
+html <- remD$getPageSource()[[1]]
+html <- read_html(html)
+
+# 인스타그램 게시글 링크 가져오기
+links <- html %>% 
+  html_nodes("#react-root") %>%
+  html_nodes("a") %>%
+  html_attr("href")
+
+# 필요없는 링크 제거
+grep("/p/",links)
+links <- links[grep("/p/",links)]
+
+# 실제 접속 링크 생성
+links <- paste0("https://www.instagram.com",links)
+
+links <- links[-10]
+
+links[1] <- "https://www.instagram.com/explore/tags/%EC%84%B1%EC%8B%AC%EB%8B%B9/"
+```
+
+## 각 게시글에 접속하여 텍스트 크롤링
+
+```{r}
+text_instagram <- lapply(1:length(links), function(k){
+  remD$navigate(links[k])
+  html <- remD$getPageSource()[[1]]
+  html <- read_html(html)
+  
+  texts <- html %>%
+    html_nodes(".C4VMK > span") %>%
+    html_text()
+
+  
+  text_df <- tibble(text_num=k,
+                    text_index=texts)
+  
+  return(text_df)
+})
+text_instagram <- text_instagram %>% bind_rows()
+```
+
+
+```{r}
+library(KoNLP)
+library(tidytext)
+library(tidyverse)
+
+word_comment1 <- text_instagram %>%
+  unnest_tokens(input = text_index,
+                output = word,
+                token = SimplePos09,
+                drop = FALSE)
+
+
+#write_rds(word_comment,"data/word_comment.rds")
+
+```
+
+
+```{r}
+n_done1 <- word_comment1 %>%
+  filter(str_detect(word, "/n")) %>% # 명사만 추출
+  mutate(pos_done1  = str_remove(word, "/.*$")) %>% # 형태소 정보 제거
+  filter(nchar(pos_done1) > 1)%>% 
+  ungroup()
+```
+
+```{r}
+p_done1 <- word_comment1 %>%
+  filter(str_detect(word, "/p")) %>% 
+  mutate(pos_done1 =str_replace_all(word,"/.*$", "다")) %>%
+  filter(nchar(pos_done1) > 1) %>% 
+  ungroup()
+```
+
+- 합치기
+
+```{r}
+pos_done1 <- bind_rows(n_done1, p_done1) %>% 
+  arrange(pos_done1) %>% 
+  select(text_num, pos_done1) 
+
+pos_done1
+```
+
+```{r}
+# 전체 명사/동사/형용사
+pos_done1 %>%
+  count(pos_done1, sort = TRUE) %>%
+  filter(n >10) %>%
+  mutate(pos_done1 = reorder(pos_done1, n)) %>%
+  ggplot(aes(pos_done1, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+# 명사만
+n_done1 %>% 
+  count(pos_done1, sort = TRUE) %>%
+  filter(n >8) %>%
+  mutate(pos_done1 = reorder(pos_done1, n)) %>%
+  ggplot(aes(pos_done1, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+# 동사/형용사만
+p_done1 %>%
+  count(pos_done1, sort = TRUE) %>%
+  filter(n >8) %>%
+  mutate(pos_done1 = reorder(pos_done1, n)) %>%
+  ggplot(aes(pos_done1, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+#### Wordcloud
+
+```{r}
+library(wordcloud2)
+
+n_done_count <- n_done1 %>% count(pos_done1)
+
+wordcloud2(data=n_done_count,fontFamily = '나눔바른고딕', 
+           size=0.5,
+           minSize=5)
+```
+
+

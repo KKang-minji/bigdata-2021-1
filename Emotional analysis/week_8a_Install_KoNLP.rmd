@@ -1,0 +1,69 @@
+---
+title: "week_1b"
+author: "Jiho Yeo"
+date: '2021 2 18 '
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+## KoNLP 설치
+
+- 한글 분석을 위한 KoNLP 라이브러리가 현재 최신버전의 R에서 설치가 안됨
+- 따라서 `install.packages("KoNLP")`가 동작하지 않음 
+- 아래의 설치방법을 따라 설치
+- **주의사항**: R이 4.03 버전(최신버전)인지 확인 한 후 진행
+- **주의사항**: 프로그램 추가/제거에서 기존에 java가 설치되어 있으면 java는 다시 설치할 필요가 없으나 환경변수만 확인
+
+### R 언어 한글로 변경 
+
+```{r}
+Sys.setlocale("LC_ALL","Korean") # 언어 한글로
+# Sys.setlocale("LC_ALL","English") # 언어 영어로
+```
+
+
+### 1. java 다운로드 및 설치
+
+- https://www.oracle.com/java/technologies/javase-jdk16-downloads.html
+- 해당 링크에 가서 본인 운영체제에 맞는 자바를 다운로드 및 설치
+- 윈도우 10기준, 64bit 자바 설치파일은 notion에 업로드 되어 있음
+
+```{r}
+Sys.getenv(c("JAVA_HOME","PATH"))
+
+# 자바 설치 후 환경변수 설정. 자바가 깔린 폴더로 지정
+Sys.setenv(JAVE_HOME="C:/Program Files/Java/jdk-16.0.1")
+
+# rJava 설치
+#install.packages("rJava")
+library(rJava)
+```
+
+### 2. KoNLP 패키지 설치 
+
+- 한글로 된 텍스트 분석을 할 때 사용하는 패키지 
+
+```{r}
+#install.packages("remotes")
+library(remotes)
+remotes::install_github('haven-jeon/KoNLP',
+                        upgrade='never',
+                        INSTALL_opts=c("--no-multiarch"))
+
+library(KoNLP)
+```
+
+### 3. 형태소 분석을 위한 단어사전 다운로드
+
+```{r}
+useNIADic() # 단어사전 사용
+```
+
+### 4. test
+
+```{r}
+extractNoun("잘 작동되는지 실험해 봅시다")
+```
+

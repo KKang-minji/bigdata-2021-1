@@ -1,0 +1,38 @@
+---
+title: "My first dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Chart A
+
+마찬가지로 이곳에 설명을 적고
+
+```{r}
+plot(1:10) # 이곳에 그래프, 테이블을 넣습니다 
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+hist(1:100)
+```
+
+### Chart C
+
+```{r}
+boxplot(1:100)
+```
+

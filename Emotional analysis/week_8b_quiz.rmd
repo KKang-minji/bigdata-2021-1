@@ -1,0 +1,29 @@
+---
+title: "week_8b_quiz"
+author: "Jiho Yeo"
+date: '2021 4 22 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 실습 목표
+
+- 강의자료에 업로드 된, `text_exam_ko2.csv` 자료를 사용해서 단어빈도, tf-idf 시각화, wordcloud 시각화를 진행해보자.
+
+- 분석 결과에 대한 시사점을 간략하게 기술해 보자
+
+## Library load 
+
+```{r}
+library(KoNLP)
+library(tidytext) 
+library(tidyverse)
+```
+
+
+
+
+

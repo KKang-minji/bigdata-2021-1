@@ -1,0 +1,249 @@
+---
+title: "Managing data with `tidyverse`"
+author: "Jiho Yeo"
+date: '2021 2 18 '
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Tidyverse 패키지 및 간단한 사용법 
+
+- RStudio가 개발, 관리하는 패키지
+- 공식 문서가 매우 잘 되어 있음: https://www.tidyverse.org/
+- 사용자층이 두터워 영어로 검색하면 많은 질답을 찾을 수 있음
+- 6개의 핵심 패키지 포함 23가지 패키지로 이루어진 메타 패키지
+- `ggplot2`, for data visualisation.
+- `dplyr`, for data manipulation.
+- `tidyr`, for data tidying.
+- `readr`, for data import.
+- `purrr`, for functional programming.
+- `tibble`, for tibbles, a modern re-imagining of data frames.
+- `stringr`, for strings.
+- `forcats`, for factors.
+
+```{r}
+#install.packages("tidyverse")
+library(tidyverse) #깔끔하게 코딩하겠다
+```
+
+- 코드가 길어지면 이해하기 어려운 한계가 존재 
+
+```{r}
+plot(diff(log(sample(rnorm(10000, mean = 10, sd = 1), size = 100, 
+                     replace = FALSE))), col = "red", type = "l")
+```
+
+## 파이프 연산자(%>%)를 통한 코드의 직관화
+
+- 순차적 흐름으로 코드를 이해할 수 있음 
+- 중간 변수들을 계속해서 Object로 할당할 필요가 없음
+
+```{r} 
+rnorm(10000,mean=10,sd=1) %>%  #10000개의 임의의 숫자를 생성
+  sample(size=100,replace=FALSE) %>%
+  #10000개의 숫자 중 100개를 샘플링하겠다.
+  log() %>%
+  diff() %>%
+  plot(col="red",type="l")
+```
+
+```{r}
+?rnorm
+?sample
+sample(x=c(1,2,3,4,5), size=3)
+
+rnorm(10000, mean = 10, sd = 1)
+
+rnorm(10000,mean=10,sd=1) %>%  #10000개의 임의의 숫자를 생성
+  sample(size=100,replace=FALSE) %>%
+  #10000개의 숫자 중 100개를 샘플링하겠다.
+  log() %>%
+  diff() 
+
+
+```
+
+## Flight 데이터의 파이프 연산자 예시 
+
+- 사용할 데이터셋은 뉴욕시에서 2013년에 출발한 336,776 개의 모든 항공편이 포함된 데이터 
+(nycflights13 패키지의 flights 데이터셋)
+
+```{r}
+# install.packages("nycflights13")
+library(nycflights13)
+
+nrow(flights) # 행의 수를 알려줌
+head(flights)
+```
+
+- flights data를 선택 후, `group_by` 한 후, `summarise`를 수행
+- 각 function의 기능이 무엇인지 몰라도 대략적인 흐름을 파악할 수 있음 
+
+```{r}
+flights %>%
+  group_by(year,month,day) %>%
+  summarise(delay = mean(dep_delay, na.rm = TRUE))
+
+mean_delay_by_day <- flights %>%
+  group_by(year,month,day) %>%
+  summarise(delay = mean(dep_delay, na.rm = TRUE))
+```
+
+## `dplyr` 패키지에 포함된 유용한 명렁어들
+
+#### (1) `select()` : 열방향 선택
+
+데이터에서 특정 컬럼을 선택하고 싶을 때 사용. 
+선언된 순서대로 컬럼을 정렬함
+
+```{r}
+flights %>% select(year,month,day)
+
+# 컬럼에 띄어쓰기가 존재할 때 
+flights$`not use` <- 0
+
+# 컬럼이름에 되도록 띄어쓰기는 사용하지 맙시다 
+flights %>% select(`not use`)
+```
+
+#### (2) `mutate()`: 새로운 컬럼을 만들거나 계산하고 싶을 때 
+
+편의성을 위해 일부 데이터만 추출 
+
+```{r}
+flight_sample <- flights %>% select(year:day,ends_with("delay"),distance,air_time)
+flight_sample
+```
+
+각 컬럼간의 계산으로 새로운 열(Column)을 만듬
+
+```{r}
+flight_sample %>% mutate(net_delay = arr_delay - dep_delay,
+                         speed = distance/air_time *60)
+```
+
+#### (3) `filter()` : 행방향으로 조건을 설정
+
+filter()는 데이터 중에 조건에 해당하는 일부 데이터만 필터해서 사용. 
+논리 연산자와 결합하여 많이 사용.
+
+논리연산자에 대한 자세한 내용은 [링크](https://mrchypark.github.io/post/%EB%85%BC%EB%A6%AC-%EC%97%B0%EC%82%B0%EC%9E%90-%EC%A0%95%EB%A6%AC/) 참조
+
+```{r}
+a <- c(10,20,30,40,50)
+b <- 30
+
+# 논리 연산자
+a==b
+a>b
+
+# 숫자를 사용한 인덱싱 
+a[1]
+a[3]
+a[c(1,3)]
+
+# 논리연산자를 사용한 인덱싱
+a[a>b]
+a[c(4,5)]
+```
+
+연산자|설명  
+|-|-|
+`a < b`	| a가 b보다 작다  
+`a <=b` |	a가 b보다 작거나 같다  
+`a == b` |	a와 b가 같다  
+`a != b` |	a와 b가 같지 않다  
+`!x` | x가 아니다  
+`x | y` |	x이거나 y이다  
+`x & y`	| x이고 y이다  
+`isTRUE(x)` |	x가 TRUE이다  
+
+```{r}
+flights %>% filter(month==1)
+
+```
+
+#### (4) `bind_rows()`
+
+두 데이터를 행방향으로 묶음  
+데이터를 아래로 붙임
+
+`filter()`를 사용한 subset 추출
+```{r}
+jan <- flights %>% filter(month==1)
+feb <- flights %>% filter(month==2)
+
+janfeb <- bind_rows(jan,feb)
+janfeb
+```
+
+
+#### (5) `arrange()` : 데이터 정렬
+
+지정되는 컬럼 기준으로 오름차순으로 정렬
+
+```{r}
+# 오름차순 정렬 
+flights %>% arrange(dep_delay)
+
+# 내림차순 정렬 
+flights %>% arrange(-dep_delay)
+
+```
+
+#### (6) `group_by()` & `summarise()` : 그룹별로 계산을 수행
+
+그룹별로 통계치를 뽑거나 특정 계산을 수행하고 싶은 경우 
+
+```{r}
+# Group을 하지 않았을 때 
+flights %>% 
+  summarise(mean_dep_delay = mean(dep_delay, na.rm=T),       #na.rm=T: NA 처리
+                      count = n())
+
+
+flights %>% 
+  group_by(month) %>% 
+  summarise(mean_dep_delay = mean(dep_delay, na.rm=T),
+                                         count = n())
+```
+
+
+#### (7) `left_join()`
+
+```{r}
+# 특정 컬럼만 추출 
+flight_sample <- flights %>% select(year:day,origin,carrier)
+flight_sample
+```
+
+```{r}
+# 항공사 이름 
+airlines
+```
+
+두 데이터를 특정한 key value를 기준으로 좌우로 붙이고 싶을 때 `left_join()`을 사용
+
+```{r}
+flight_sample %>% left_join(airlines, by="carrier")
+```
+
+Key 값의 컬럼 이름이 다를 경우 
+
+```{r}
+colnames(airlines)[1]<-"company_name"
+
+flight_sample %>% left_join(airlines, by=c("carrier"="company_name"))
+```
+
+## Source 
+
+- 본 강의자료는 아래와 같은 Source를 인용 및 참조하여 작성되었습니다. 
+- R로 하는 텍스트 데이터 전처리 방법: https://mrchypark.github.io/RKoText101/#1
+- https://harryyang1982.gitbooks.io/r_social_research/content/chapter5.html
+- http://garrettgman.github.io/tidying/
+

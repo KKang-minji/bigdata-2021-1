@@ -1,0 +1,130 @@
+---
+title: "week8_exercise"
+author: "minji"
+date: '2021 5 31 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidytext)
+#install.packages("rtweet")
+#install.packages("twitteR")
+library(rtweet)
+library(twitteR)
+
+Sys.setlocale("LC_ALL","Korean") # 언어 한글로
+```
+
+```{r cars}
+api_key <- "5zj8FkarvdhIUzbebwX7orAH6"
+api_secret_key <- "fCigYwltVTNraP5DrsZKS1OqizLlyjjpISid0V1A5YzpgYYjEl"
+
+access_token <- "1399335514558267399-QsbhGE0LYvyFzMCbvu3201ilLF9wDU"
+access_token_secret <- "Zbcinm4tje31qTQQTKkmprvpbQdQ2vbO5woHcvzOgeFGL"
+
+options(httr_oauth_cache = TRUE)
+setup_twitter_oauth(api_key,api_secret_key,access_token,access_token_secret)
+```
+
+```{r}
+token= rtweet::create_token("minji",
+                            api_key,
+                            api_secret_key,
+                            access_token,
+                            access_token_secret)
+
+IU <- get_timelines(c("@_IUofficial"),
+                               n = 1000,
+                               token=token)
+```
+
+```{r}
+iu_tweet <- search_tweets("IU", n=5000, include_rts = FALSE, lang="ko")
+```
+
+
+```{r}
+iu_t <- users_data(IU)
+
+# plot time-series
+ts_plot(iu_tweet, by="minutes") #분별 트윗
+ts_plot(iu_tweet, by="hours")  #시간별 트윗
+ts_plot(iu_tweet, by="days")   #일별 트윗
+```
+
+## Tokenization
+
+```{r}
+iu_token <- iu_tweet %>%
+  select(text) %>%
+  unnest_tokens(word, text, token = "tweets") %>%
+  anti_join(stop_words)%>%
+  mutate(name="IU")
+
+cold_token <- cold_tweet %>%
+  select(text) %>%
+  unnest_tokens(word, text, token = "tweets") %>%
+  anti_join(stop_words)%>%
+  mutate(name="coldplay")
+
+dat_token <- rbind(radio_token, cold_token)
+```
+
+```{r}
+vis_by_band <- iu_token %>%
+  count(name, word, sort = TRUE) %>%
+  group_by(name) %>%
+  slice_max(n, n=15) %>%
+  ungroup()
+
+ggplot(vis_by_band, aes(n, fct_reorder(word,n), fill = name))+
+  geom_col()+
+  labs(y = NULL) +
+  facet_wrap(~name, scales = "free")
+```
+
+## Stop words
+
+불용어가 많이 존재하므로, 처리해줄 필요가 있음
+
+```{r}
+remove_words <- c("@yejooiu","@himaeiu","@ssssiu","아이유","iu",
+                  "#iu","너무","진짜","나","@linneiu","@iumayonnaise","@silveriu04","@monglangiu","내","안","더","아","다","잘","거","l","왜")
+
+custom_stop_words <- bind_rows(tibble(word = remove_words,  
+                                      lexicon = c("IU")), 
+                               stop_words)
+
+dat_token <- iu_token %>% anti_join(custom_stop_words)
+```
+
+
+```{r}
+vis_by_band <- dat_token %>%
+  count(name, word, sort = TRUE) %>%
+  group_by(name) %>%
+  slice_max(n, n=15) %>%   #15개로 추림
+  ungroup()
+
+ggplot(vis_by_band, aes(n, fct_reorder(word,n), fill = name))+
+  geom_col()+
+  labs(y = NULL) +
+  facet_wrap(~name, scales = "free")
+```
+
+```{r}
+library(gridExtra)
+
+p_cold <- ggplot(vis_by_band %>% filter(name=="IU"), 
+                 aes(n, fct_reorder(word,n))) + 
+                   geom_col(fill=2)+
+                   labs(y = NULL,title = "Coldplay")
+
+p_cold 
+```
+
